@@ -1,0 +1,6 @@
+{
+  "name": "Honda",
+  "description": "Honda motorcycle showroom, accessories store, and service booking platform for Pakistan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

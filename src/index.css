@@ -1,0 +1,287 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #FFFFFF;
+  --color-surface: #F5F5F6;
+  --color-ink: #111214;
+  --color-charcoal: #26282C;
+  --color-muted: #6B7078;
+  --color-border: #E3E4E7;
+  --color-accent: #D71920;
+  --color-accent-dark: #B01218;
+  --color-success: #1E8E4E;
+  --color-warning: #B7791F;
+  --color-danger: #C0262D;
+  --color-info: #2563EB;
+}
+
+@layer base {
+  html {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    color: var(--color-ink);
+    background-color: var(--color-bg);
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, .font-display {
+    font-family: 'Barlow Condensed', system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  .font-mono-tabular {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes splash-speedline {
+  0% {
+    transform: translate3d(110vw, 0, 0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  85% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate3d(-40vw, 0, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes splash-road-draw {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes splash-road-dash {
+  0% {
+    background-position-x: 0;
+  }
+  100% {
+    background-position-x: -96px;
+  }
+}
+
+@keyframes splash-bike-ride {
+  0% {
+    transform: translate3d(-70vw, 0, 0) skewX(-3deg);
+    opacity: 0;
+    filter: blur(2.5px);
+  }
+  18% {
+    opacity: 1;
+    filter: blur(1.5px);
+  }
+  82% {
+    transform: translate3d(2px, 0, 0) skewX(0.8deg);
+    filter: blur(0.3px);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) skewX(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes splash-wheel-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(1080deg);
+  }
+}
+
+@keyframes splash-dust-puff {
+  0% {
+    transform: translate3d(0, 0, 0) scaleX(0.4);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translate3d(-68px, -4px, 0) scaleX(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes splash-headlight-flash {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.35);
+  }
+  30% {
+    opacity: 1;
+    transform: scaleX(1.08);
+  }
+  70% {
+    opacity: 0.75;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0.25;
+    transform: scaleX(0.95);
+  }
+}
+
+@keyframes splash-letter-reveal {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes splash-underline-sweep {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes splash-tagline-up {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes splash-progress-fill {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.splash-speedline {
+  animation: splash-speedline var(--speed-dur, 1.4s) linear var(--speed-delay, 0s) infinite;
+}
+
+.splash-road-line {
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: splash-road-draw 500ms cubic-bezier(0.22, 1, 0.36, 1) 300ms forwards;
+}
+
+.splash-road-dashes {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.34) 0px,
+    rgba(255, 255, 255, 0.34) 22px,
+    transparent 22px,
+    transparent 48px
+  );
+  animation: splash-road-dash 420ms linear 300ms 3;
+}
+
+.splash-bike-enter {
+  opacity: 0;
+  animation: splash-bike-ride 800ms cubic-bezier(0.16, 1, 0.3, 1) 500ms forwards;
+}
+
+.splash-wheel-rotate {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: splash-wheel-spin 820ms cubic-bezier(0.16, 1, 0.3, 1) 500ms forwards;
+}
+
+.splash-dust {
+  opacity: 0;
+  animation: splash-dust-puff 650ms ease-out var(--dust-delay, 560ms) forwards;
+}
+
+.splash-headlight {
+  opacity: 0;
+  transform-origin: left center;
+  animation: splash-headlight-flash 650ms ease-out 1300ms forwards;
+}
+
+.splash-letter {
+  display: inline-block;
+  opacity: 0;
+  animation: splash-letter-reveal 360ms cubic-bezier(0.22, 1, 0.36, 1) var(--letter-delay, 1400ms) forwards;
+}
+
+.splash-underline {
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: splash-underline-sweep 420ms cubic-bezier(0.22, 1, 0.36, 1) 1680ms forwards;
+}
+
+.splash-tagline {
+  opacity: 0;
+  animation: splash-tagline-up 420ms cubic-bezier(0.22, 1, 0.36, 1) 2000ms forwards;
+}
+
+.splash-progress {
+  transform-origin: left center;
+  transform: scaleX(0);
+  animation: splash-progress-fill 800ms cubic-bezier(0.4, 0, 0.2, 1) 2000ms forwards;
+}
+
+@keyframes mega-menu-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -8px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.mega-menu-enter {
+  animation: mega-menu-in 180ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.reveal-section {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  transition: opacity 520ms cubic-bezier(0.22, 1, 0.36, 1), transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal-section.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+
