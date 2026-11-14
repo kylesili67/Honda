@@ -1,5 +1,6 @@
 import {
   createInitialDemoState,
+  SAMPLE_BIKES,
   SAMPLE_NEWS_POSTS,
   SAMPLE_STATIC_PAGES,
   type DemoStoreState,
@@ -19,6 +20,25 @@ function loadInitial(): DemoStoreState {
       if (!parsed.staticPages.some((p) => p.slug === 'disclaimer')) {
         const disc = SAMPLE_STATIC_PAGES.find((p) => p.slug === 'disclaimer');
         if (disc) parsed.staticPages.push(disc);
+      }
+      // Backfill 4-angle sample views for pre-existing cached demo bikes lacking view_angle metadata
+      if (Array.isArray(parsed.bikes)) {
+        parsed.bikes = parsed.bikes.map((bike) => {
+          const hasAnyAngle = (bike.images ?? []).some((img) => Boolean(img.view_angle));
+          if (hasAnyAngle) return bike;
+          const sampleMatch = SAMPLE_BIKES.find((sb) => sb.id === bike.id);
+          return sampleMatch?.images
+            ? { ...bike, images: structuredClone(sampleMatch.images) }
+            : bike;
+        });
+      }
+      // Backfill related_model_id for pre-existing cached sample news posts
+      if (Array.isArray(parsed.newsPosts)) {
+        parsed.newsPosts = parsed.newsPosts.map((post) => {
+          if (post.related_model_id !== undefined) return post;
+          const samplePost = SAMPLE_NEWS_POSTS.find((sp) => sp.id === post.id);
+          return samplePost ? { ...post, related_model_id: samplePost.related_model_id ?? null } : post;
+        });
       }
       return parsed;
     }

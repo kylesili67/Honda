@@ -4,9 +4,11 @@ import type {
   Booking,
   BookingPaymentMethod,
   BookingStatus,
+  RegistrationProgress,
   RegistrationStep,
 } from '../types/database';
 import { getDemoState, saveDemoState, uid } from './demoStore';
+import { sendEmailNotification } from './notifications';
 
 export interface CreateBookingInput {
   user_id: string;
@@ -20,6 +22,20 @@ export interface CreateBookingInput {
   notes?: string;
   proof_path?: string | null;
   gateway_reference?: string | null;
+}
+
+type RawBookingRow = Booking & {
+  registration_progress?: RegistrationProgress | RegistrationProgress[] | null;
+};
+
+function normalizeBooking(row: RawBookingRow): Booking {
+  const rp = Array.isArray(row.registration_progress)
+    ? (row.registration_progress[0] ?? undefined)
+    : (row.registration_progress ?? undefined);
+  return {
+    ...row,
+    registration_progress: rp,
+  };
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<Booking> {
@@ -81,6 +97,12 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
       created_at: now,
     });
     saveDemoState();
+    void sendEmailNotification({
+      to: input.customer_email,
+      template: 'booking_submitted',
+      subject: `Booking Token Received (${bookingNumber})`,
+      variables: { booking_number: bookingNumber, customer_name: input.customer_name },
+    });
     return enrichDemoBooking(booking);
   }
 
@@ -100,9 +122,18 @@ export async function createBooking(input: CreateBookingInput): Promise<Booking>
   });
 
   if (error) throw error;
-  const bookingNumber = typeof data === 'string' ? data : (data as { booking_number: string }).booking_number;
+  const bookingNumber =
+    typeof data === 'string' ? data : (data as { booking_number: string }).booking_number;
   const created = await getBookingByNumber(bookingNumber);
   if (!created) throw new Error('Booking created but unable to load details');
+
+  void sendEmailNotification({
+    to: input.customer_email,
+    template: 'booking_submitted',
+    subject: `Booking Token Received (${created.booking_number})`,
+    variables: { booking_number: created.booking_number, customer_name: input.customer_name },
+  });
+
   return created;
 }
 
@@ -142,7 +173,7 @@ export async function listMyBookings(userId: string): Promise<Booking[]> {
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as Booking[];
+  return ((data ?? []) as RawBookingRow[]).map(normalizeBooking);
 }
 
 export async function getBookingByNumber(bookingNumber: string): Promise<Booking | null> {
@@ -164,7 +195,7 @@ export async function getBookingByNumber(bookingNumber: string): Promise<Booking
     .eq('booking_number', bookingNumber)
     .maybeSingle();
   if (error) throw error;
-  return (data as Booking) ?? null;
+  return data ? normalizeBooking(data as RawBookingRow) : null;
 }
 
 export async function getBookingById(id: string): Promise<Booking | null> {
@@ -186,7 +217,7 @@ export async function getBookingById(id: string): Promise<Booking | null> {
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
-  return (data as Booking) ?? null;
+  return data ? normalizeBooking(data as RawBookingRow) : null;
 }
 
 export async function listAllBookingsAdmin(): Promise<Booking[]> {
@@ -206,7 +237,7 @@ export async function listAllBookingsAdmin(): Promise<Booking[]> {
     )
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as Booking[];
+  return ((data ?? []) as RawBookingRow[]).map(normalizeBooking);
 }
 
 export async function requestBookingCancel(bookingId: string): Promise<void> {
@@ -265,6 +296,12 @@ export async function updateBookingAdmin(
           note: 'Confirmed by showroom staff',
         });
       }
+      void sendEmailNotification({
+        to: b.customer_email,
+        template: 'booking_confirmed',
+        subject: `Booking Confirmed (${b.booking_number})`,
+        variables: { booking_number: b.booking_number, customer_name: b.customer_name },
+      });
     }
     if ((updates.status === 'cancelled' || updates.status === 'expired') && prevStatus === 'confirmed') {
       for (const m of s.bikes) {
@@ -292,8 +329,31 @@ export async function updateBookingAdmin(
   }
 
   if (updates.status === 'confirmed') {
-    const { error } = await supabase.rpc('confirm_booking', { booking_id: bookingId });
-    if (error) throw error;
+    const { error: rpcErr } = await supabase.rpc('confirm_booking', { p_booking_id: bookingId });
+    if (rpcErr) throw rpcErr;
+
+    const nonStatusUpdates: { internal_notes?: string | null; assigned_to?: string | null } = {};
+    if (updates.internal_notes !== undefined) nonStatusUpdates.internal_notes = updates.internal_notes;
+    if (updates.assigned_to !== undefined) nonStatusUpdates.assigned_to = updates.assigned_to;
+
+    if (Object.keys(nonStatusUpdates).length > 0) {
+      const { error: notesErr } = await supabase
+        .from('bookings')
+        .update(nonStatusUpdates)
+        .eq('id', bookingId);
+      if (notesErr) throw notesErr;
+    }
+
+    const updated = await getBookingById(bookingId);
+    if (updated) {
+      void sendEmailNotification({
+        to: updated.customer_email,
+        template: 'booking_confirmed',
+        subject: `Booking Confirmed (${updated.booking_number})`,
+        variables: { booking_number: updated.booking_number, customer_name: updated.customer_name },
+      });
+    }
+    return;
   }
 
   const { error } = await supabase.from('bookings').update(updates).eq('id', bookingId);
@@ -330,14 +390,16 @@ export async function updateRegistrationProgress(
     return;
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: fetchError } = await supabase
     .from('registration_progress')
     .select('*')
     .eq('booking_id', bookingId)
     .maybeSingle();
+  if (fetchError) throw fetchError;
 
   const now = new Date().toISOString();
-  const prevHistory = (existing?.step_history as Array<{ step: RegistrationStep; at: string; note?: string }>) ?? [];
+  const prevHistory =
+    (existing?.step_history as Array<{ step: RegistrationStep; at: string; note?: string }>) ?? [];
   const nextHistory = [...prevHistory, { step, at: now, note }];
 
   const { error } = await supabase.from('registration_progress').upsert(

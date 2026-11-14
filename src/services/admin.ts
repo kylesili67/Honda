@@ -47,10 +47,11 @@ export async function saveCustomerAddress(
     return created;
   }
   if (address.is_default) {
-    await supabase
+    const { error: resetErr } = await supabase
       .from('customer_addresses')
       .update({ is_default: false })
       .eq('user_id', address.user_id);
+    if (resetErr) throw resetErr;
   }
   const { data, error } = await supabase
     .from('customer_addresses')
@@ -81,7 +82,8 @@ export async function listCustomersAdmin(): Promise<Array<Profile & { roles: Use
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  const { data: roles } = await supabase.from('user_roles').select('*');
+  const { data: roles, error: rolesError } = await supabase.from('user_roles').select('*');
+  if (rolesError) throw rolesError;
   const roleRows = (roles ?? []) as Array<{ user_id: string; role: UserRole }>;
   return ((profiles ?? []) as Profile[]).map((p) => ({
     ...p,
@@ -104,15 +106,23 @@ export async function updateCustomerNotesAdmin(userId: string, notes: string): P
 
 export async function assignStaffRoleAdmin(
   userId: string,
-  role: UserRole,
+  roleOrRoles: UserRole | UserRole[],
   actorId: string
 ): Promise<void> {
+  if (userId === actorId) {
+    throw new Error('You cannot modify your own role assignment.');
+  }
+  const nextRoles = Array.from(new Set(Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles]));
+  if (nextRoles.length === 0) {
+    throw new Error('At least one role must be selected.');
+  }
+
   if (!isSupabaseConfigured || !supabase) {
     const s = getDemoState();
     const u = s.users.find((x) => x.id === userId);
     if (!u) throw new Error('User not found');
     const prev = [...u.roles];
-    u.roles = [role];
+    u.roles = nextRoles;
     s.auditLog.unshift({
       id: uid('aud'),
       actor_id: actorId,
@@ -120,7 +130,7 @@ export async function assignStaffRoleAdmin(
       entity_type: 'user_roles',
       entity_id: userId,
       old_data: { roles: prev },
-      new_data: { roles: [role] },
+      new_data: { roles: nextRoles },
       ip: null,
       created_at: new Date().toISOString(),
     });
@@ -128,9 +138,41 @@ export async function assignStaffRoleAdmin(
     return;
   }
 
-  await supabase.from('user_roles').delete().eq('user_id', userId);
-  const { error } = await supabase.from('user_roles').insert({ user_id: userId, role });
-  if (error) throw error;
+  const { data: existingRows, error: fetchErr } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId);
+  if (fetchErr) throw fetchErr;
+  const prevRoles = ((existingRows ?? []) as Array<{ role: UserRole }>).map((r) => r.role);
+
+  // Upsert desired roles first so the user is never left without a role if insert fails
+  const { error: upsertErr } = await supabase
+    .from('user_roles')
+    .upsert(
+      nextRoles.map((role) => ({ user_id: userId, role })),
+      { onConflict: 'user_id,role' }
+    );
+  if (upsertErr) throw upsertErr;
+
+  const toRemove = prevRoles.filter((r) => !nextRoles.includes(r));
+  if (toRemove.length > 0) {
+    const { error: delErr } = await supabase
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId)
+      .in('role', toRemove);
+    if (delErr) throw delErr;
+  }
+
+  const { error: auditErr } = await supabase.from('audit_log').insert({
+    actor_id: actorId,
+    action: 'role_assigned',
+    entity_type: 'user_roles',
+    entity_id: userId,
+    old_data: { roles: prevRoles },
+    new_data: { roles: nextRoles },
+  });
+  if (auditErr) throw auditErr;
 }
 
 export async function listAuditLogAdmin(): Promise<AuditLogEntry[]> {
@@ -186,6 +228,17 @@ export async function saveCouponAdmin(coupon: Partial<Coupon> & { code: string }
   return data as Coupon;
 }
 
+export async function deleteCouponAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.coupons = s.coupons.filter((c) => c.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('coupons').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function saveDeliveryZoneAdmin(
   zone: Partial<DeliveryZone> & { name: string }
 ): Promise<DeliveryZone> {
@@ -214,6 +267,17 @@ export async function saveDeliveryZoneAdmin(
   const { data, error } = await supabase.from('delivery_zones').upsert(zone).select('*').single();
   if (error) throw error;
   return data as DeliveryZone;
+}
+
+export async function deleteDeliveryZoneAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.deliveryZones = s.deliveryZones.filter((z) => z.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('delivery_zones').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function listTimeSlotsAdmin(): Promise<TimeSlot[]> {

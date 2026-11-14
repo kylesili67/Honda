@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -48,10 +48,11 @@ export function ServiceBookingPage() {
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       branch_id: branches[0]?.id || '',
       service_date: todayKarachiISO(),
       slot_id: '',
@@ -61,6 +62,21 @@ export function ServiceBookingPage() {
       description: '',
     },
   });
+
+  useEffect(() => {
+    reset(
+      {
+        branch_id: branches[0]?.id || '',
+        service_date: todayKarachiISO(),
+        slot_id: '',
+        model_name: bikes[0]?.name || 'City Commuter 70',
+        registration_number: '',
+        service_type: 'regular_service',
+        description: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [branches, bikes, reset]);
 
   const branchId = watch('branch_id');
   const serviceDate = watch('service_date');
@@ -179,7 +195,7 @@ export function ServiceBookingPage() {
                       key={slot.id}
                       type="button"
                       disabled={full}
-                      onClick={() => setValue('slot_id', slot.id, { shouldValidate: true })}
+                      onClick={() => setValue('slot_id', slot.id, { shouldDirty: true, shouldValidate: true })}
                       className={`rounded-lg border px-3 py-2.5 text-left text-sm cursor-pointer disabled:opacity-45 ${
                         active
                           ? 'border-[#D71920] bg-[#D71920]/5 font-semibold text-[#111214]'

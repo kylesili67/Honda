@@ -4,7 +4,8 @@ import { useCart } from '../../context/CartContext';
 import { useToast } from '../../context/ToastContext';
 import { getTotalAvailableBikeStock } from '../../services/bikes';
 import type { BikeModel } from '../../types/database';
-import { Button, PriceTag, SafeImage } from '../ui/Primitives';
+import { Button, PriceTag } from '../ui/Primitives';
+import { BikeAngleImage } from './BikeAngleImage';
 
 export function BikeCard({
   bike,
@@ -18,8 +19,6 @@ export function BikeCard({
   const { compareIds, toggleCompare } = useCart();
   const { toast } = useToast();
 
-  const primaryImg =
-    bike.images?.find((i) => i.is_primary)?.url ?? bike.images?.[0]?.url ?? null;
   const prices = (bike.variants ?? []).map((v) => v.ex_showroom_price);
   const fromPrice = prices.length > 0 ? Math.min(...prices) : 0;
   const topMileage = Math.max(0, ...(bike.variants ?? []).map((v) => v.mileage_kmpl ?? 0));
@@ -29,11 +28,10 @@ export function BikeCard({
   return (
     <article className="group flex flex-col rounded-xl border border-[#E3E4E7] bg-white overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-lg">
       <Link to={`/bikes/${bike.slug}`} className="relative block bg-[#F5F5F6] overflow-hidden">
-        <SafeImage
-          src={primaryImg}
+        <BikeAngleImage
+          images={bike.images}
           alt={bike.images?.[0]?.alt_text || bike.name}
-          aspectClass="aspect-[4/3]"
-          className="w-full aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.04]"
+          aspectRatio="4/3"
         />
       </Link>
 

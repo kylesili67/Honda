@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
+import { useToast } from '../../context/ToastContext';
 
 const ACCOUNT_LINKS = [
   { to: '/account', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -33,11 +34,20 @@ const ACCOUNT_LINKS = [
 export function AccountLayout() {
   const { settings } = useSettings();
   const { profile, signOut } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/');
+    try {
+      await signOut();
+      navigate('/');
+    } catch (err) {
+      toast({
+        title: 'Sign out failed',
+        description: err instanceof Error ? err.message : 'Unable to sign out',
+        variant: 'error',
+      });
+    }
   };
 
   return (

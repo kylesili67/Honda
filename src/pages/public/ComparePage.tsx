@@ -15,9 +15,9 @@ import {
   Button,
   Card,
   EmptyState,
-  SafeImage,
   Select,
 } from '../../components/ui/Primitives';
+import { BikeAngleImage } from '../../components/bikes/BikeAngleImage';
 
 export function ComparePage() {
   const { settings } = useSettings();
@@ -32,6 +32,7 @@ export function ComparePage() {
 
   const { data: bikes = [] } = useQuery({ queryKey: ['bikes-published'], queryFn: () => listBikes() });
   const [highlightDiffs, setHighlightDiffs] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const selectedBikes = bikes.filter((b) => compareIds.includes(b.id));
   const availableToAdd = bikes.filter((b) => !compareIds.includes(b.id));
@@ -42,18 +43,32 @@ export function ComparePage() {
       return;
     }
     if (selectedBikes.length < 2) return;
-    await saveComparison(
-      user.id,
-      selectedBikes.map((b) => b.name).join(' vs '),
-      selectedBikes.map((b) => b.id)
-    );
-    toast({ title: 'Comparison saved to your account', variant: 'success' });
+    setSaving(true);
+    try {
+      await saveComparison(
+        user.id,
+        selectedBikes.map((b) => b.name).join(' vs '),
+        selectedBikes.map((b) => b.id)
+      );
+      toast({ title: 'Comparison saved to your account', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Save failed',
+        description: err instanceof Error ? err.message : 'Unable to save comparison',
+        variant: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const specRows: Array<{ label: string; getValue: (b: (typeof bikes)[number]) => string }> = [
     {
       label: 'Starting Price',
-      getValue: (b) => formatPKR(Math.min(...(b.variants ?? []).map((v) => v.ex_showroom_price))),
+      getValue: (b) => {
+        const prices = (b.variants ?? []).map((v) => v.ex_showroom_price);
+        return prices.length > 0 ? formatPKR(Math.min(...prices)) : '—';
+      },
     },
     { label: 'Category', getValue: (b) => b.category?.name ?? '—' },
     { label: 'Displacement', getValue: (b) => `${b.engine_cc} cc` },
@@ -98,7 +113,7 @@ export function ComparePage() {
             Highlight differences
           </label>
           {selectedBikes.length >= 2 && (
-            <Button size="sm" variant="outline" onClick={() => void handleSaveComparison()}>
+            <Button size="sm" variant="outline" loading={saving} onClick={() => void handleSaveComparison()}>
               <Bookmark className="h-4 w-4" />
               Save Comparison
             </Button>
@@ -153,16 +168,18 @@ export function ComparePage() {
                         type="button"
                         onClick={() => toggleCompare(bike.id)}
                         aria-label={`Remove ${bike.name}`}
-                        className="absolute top-1 right-1 rounded-md bg-white/90 p-1 text-[#6B7078] hover:text-[#111214] border border-[#E3E4E7]"
+                        className="absolute top-1.5 left-1.5 z-30 rounded-md bg-white/90 p-1 text-[#6B7078] hover:text-[#111214] border border-[#E3E4E7] cursor-pointer"
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
-                      <SafeImage
-                        src={bike.images?.[0]?.url}
-                        alt={bike.name}
-                        aspectClass="aspect-[4/3]"
-                        className="w-full aspect-[4/3] rounded-lg"
-                      />
+                      <Link to={`/bikes/${bike.slug}`} className="group block rounded-lg overflow-hidden">
+                        <BikeAngleImage
+                          images={bike.images}
+                          alt={bike.name}
+                          aspectRatio="4/3"
+                          className="rounded-lg"
+                        />
+                      </Link>
                       <Link
                         to={`/bikes/${bike.slug}`}
                         className="mt-3 block font-bold text-base text-[#111214] hover:text-[#D71920]"

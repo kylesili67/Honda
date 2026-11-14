@@ -201,6 +201,8 @@ export interface BikeColor {
   sort_order: number;
 }
 
+export type BikeViewAngle = 'front' | 'right' | 'back' | 'left';
+
 export interface BikeImage {
   id: string;
   model_id: string;
@@ -210,6 +212,7 @@ export interface BikeImage {
   alt_text: string;
   sort_order: number;
   is_primary: boolean;
+  view_angle?: BikeViewAngle | null;
 }
 
 export interface BikePriceHistory {
@@ -635,6 +638,7 @@ export interface NewsPost {
   excerpt: string;
   content_markdown: string;
   image_url: string | null;
+  related_model_id?: string | null;
   published_at: string;
   is_published: boolean;
   created_at: string;

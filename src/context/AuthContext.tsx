@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { STAFF_ROLES } from '../lib/constants';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { getDemoState, saveDemoState, uid } from '../services/demoStore';
@@ -10,9 +10,16 @@ interface AuthContextValue {
   roles: UserRole[];
   isLoading: boolean;
   isStaff: boolean;
+  authError: string | null;
+  clearAuthError: () => void;
   hasRole: (role: UserRole | UserRole[]) => boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (input: { email: string; password: string; fullName: string; phone: string }) => Promise<void>;
+  signUp: (input: {
+    email: string;
+    password: string;
+    fullName: string;
+    phone: string;
+  }) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: { full_name?: string; phone?: string }) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -20,68 +27,127 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const DEMO_SESSION_KEY = 'honda_demo_user_id';
+const ROLE_LOAD_ERROR_MESSAGE = 'Roles load nahi ho sake, dobara try karein.';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  const loadSupabaseUser = async (userId: string, email: string) => {
+  const mountedRef = useRef(true);
+  const inFlightLoadsRef = useRef<Map<string, Promise<void>>>(new Map());
+
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+  }, []);
+
+  const loadSupabaseUser = useCallback(async (userId: string, email: string) => {
     if (!supabase) return;
-    const [{ data: prof }, { data: roleRows }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-      supabase.from('user_roles').select('role').eq('user_id', userId),
-    ]);
-    setUser({ id: userId, email });
-    setProfile((prof as Profile) ?? null);
-    const parsedRoles = ((roleRows ?? []) as Array<{ role: UserRole }>).map((r) => r.role);
-    setRoles(parsedRoles.length > 0 ? parsedRoles : ['customer']);
-  };
+    const existing = inFlightLoadsRef.current.get(userId);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = (async () => {
+      const [{ data: prof, error: profErr }, { data: roleRows, error: roleErr }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        supabase.from('user_roles').select('role').eq('user_id', userId),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      if (roleErr || profErr) {
+        setUser({ id: userId, email });
+        setProfile(profErr ? null : ((prof as Profile | null) ?? null));
+        setRoles([]);
+        setAuthError(ROLE_LOAD_ERROR_MESSAGE);
+        throw new Error(roleErr?.message || profErr?.message || ROLE_LOAD_ERROR_MESSAGE);
+      }
+
+      setAuthError(null);
+      setUser({ id: userId, email });
+      setProfile((prof as Profile | null) ?? null);
+      const parsedRoles = ((roleRows ?? []) as Array<{ role: UserRole }>).map((r) => r.role);
+      setRoles(parsedRoles.length > 0 ? parsedRoles : ['customer']);
+    })().finally(() => {
+      inFlightLoadsRef.current.delete(userId);
+    });
+
+    inFlightLoadsRef.current.set(userId, promise);
+    return promise;
+  }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     let active = true;
 
     if (!isSupabaseConfigured || !supabase) {
-      const savedId = typeof window !== 'undefined' ? window.localStorage.getItem(DEMO_SESSION_KEY) : null;
-      if (savedId) {
-        const found = getDemoState().users.find((u) => u.id === savedId);
-        if (found && active) {
-          setUser({ id: found.id, email: found.email });
-          setProfile(found.profile);
-          setRoles(found.roles);
+      try {
+        const savedId =
+          typeof window !== 'undefined' ? window.localStorage.getItem(DEMO_SESSION_KEY) : null;
+        if (savedId) {
+          const found = getDemoState().users.find((u) => u.id === savedId);
+          if (found && active) {
+            setUser({ id: found.id, email: found.email });
+            setProfile(found.profile);
+            setRoles(found.roles);
+          }
         }
+      } finally {
+        if (active) setIsLoading(false);
       }
-      setIsLoading(false);
-      return;
+      return () => {
+        active = false;
+        mountedRef.current = false;
+      };
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      if (data.session?.user) {
-        await loadSupabaseUser(data.session.user.id, data.session.user.email ?? '');
-      }
-      setIsLoading(false);
-    });
+    const client = supabase;
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const initSession = async () => {
+      try {
+        const { data, error } = await client.auth.getSession();
+        if (error) throw error;
+        if (!active) return;
+        if (data.session?.user) {
+          await loadSupabaseUser(data.session.user.id, data.session.user.email ?? '');
+        }
+      } catch {
+        if (active) {
+          setAuthError(ROLE_LOAD_ERROR_MESSAGE);
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    void initSession();
+
+    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       if (session?.user) {
-        void loadSupabaseUser(session.user.id, session.user.email ?? '');
+        void loadSupabaseUser(session.user.id, session.user.email ?? '').catch(() => {
+          // authError state is updated inside loadSupabaseUser
+        });
       } else {
         setUser(null);
         setProfile(null);
         setRoles([]);
+        setAuthError(null);
       }
     });
 
     return () => {
       active = false;
+      mountedRef.current = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [loadSupabaseUser]);
 
   const signIn = async (email: string, password: string) => {
+    setAuthError(null);
     if (!isSupabaseConfigured || !supabase) {
       const found = getDemoState().users.find(
         (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
@@ -106,7 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string;
     fullName: string;
     phone: string;
-  }) => {
+  }): Promise<{ needsEmailConfirmation: boolean }> => {
+    setAuthError(null);
     if (!isSupabaseConfigured || !supabase) {
       const s = getDemoState();
       const exists = s.users.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase());
@@ -136,13 +203,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser({ id, email: newRec.email });
       setProfile(newRec.profile);
       setRoles(newRec.roles);
-      return;
+      return { needsEmailConfirmation: false };
     }
 
     const { data, error } = await supabase.auth.signUp({
       email: input.email,
       password: input.password,
       options: {
+        emailRedirectTo: `${window.location.origin}/login`,
         data: {
           full_name: input.fullName,
           phone: input.phone,
@@ -150,16 +218,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     });
     if (error) throw error;
-    if (data.user && data.session) {
-      await supabase
+
+    if (!data.session) {
+      return { needsEmailConfirmation: true };
+    }
+
+    if (data.user) {
+      const { error: profUpdateErr } = await supabase
         .from('profiles')
         .update({ full_name: input.fullName, phone: input.phone })
         .eq('id', data.user.id);
+      if (profUpdateErr) {
+        // Brief wait in case handle_new_user trigger completes right after signup
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const { error: retryErr } = await supabase
+          .from('profiles')
+          .update({ full_name: input.fullName, phone: input.phone })
+          .eq('id', data.user.id);
+        if (retryErr) throw retryErr;
+      }
       await loadSupabaseUser(data.user.id, data.user.email ?? input.email);
     }
+
+    return { needsEmailConfirmation: false };
   };
 
   const signOut = async () => {
+    setAuthError(null);
     if (!isSupabaseConfigured || !supabase) {
       window.localStorage.removeItem(DEMO_SESSION_KEY);
       setUser(null);
@@ -167,7 +252,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRoles([]);
       return;
     }
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    setUser(null);
+    setProfile(null);
+    setRoles([]);
   };
 
   const updateProfile = async (updates: { full_name?: string; phone?: string }) => {
@@ -198,6 +287,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u) {
         setProfile({ ...u.profile });
         setRoles([...u.roles]);
+        setAuthError(null);
       }
       return;
     }
@@ -219,6 +309,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         roles,
         isLoading,
         isStaff,
+        authError,
+        clearAuthError,
         hasRole,
         signIn,
         signUp,

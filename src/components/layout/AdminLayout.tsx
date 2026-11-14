@@ -28,13 +28,19 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useSettings } from '../../context/SettingsContext';
+import { useToast } from '../../context/ToastContext';
 import { canAccessAdminModule, ROLE_LABELS, type AdminModuleKey } from '../../lib/constants';
 import { Logo } from '../brand/Logo';
 
 interface AdminNavGroup {
   group: string;
-  items: Array<{ to: string; label: string; module: AdminModuleKey; icon: React.ComponentType<{ className?: string }>; end?: boolean }>;
+  items: Array<{
+    to: string;
+    label: string;
+    module: AdminModuleKey;
+    icon: React.ComponentType<{ className?: string }>;
+    end?: boolean;
+  }>;
 }
 
 const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
@@ -100,8 +106,8 @@ const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 ];
 
 export function AdminLayout() {
-  const { settings } = useSettings();
   const { profile, roles, signOut } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -111,8 +117,16 @@ export function AdminLayout() {
   })).filter((g) => g.items.length > 0);
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/admin/login');
+    try {
+      await signOut();
+      navigate('/admin/login');
+    } catch (err) {
+      toast({
+        title: 'Sign out failed',
+        description: err instanceof Error ? err.message : 'Unable to sign out',
+        variant: 'error',
+      });
+    }
   };
 
   const SidebarContent = (
@@ -177,7 +191,7 @@ export function AdminLayout() {
           </Link>
           <button
             type="button"
-            onClick={handleSignOut}
+            onClick={() => void handleSignOut()}
             className="inline-flex items-center gap-1 text-xs text-white/80 hover:text-white cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5" />

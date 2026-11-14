@@ -54,10 +54,12 @@ export async function toggleWishlistItem(
   let q = supabase.from('wishlists').select('id').eq('user_id', userId);
   if (target.model_id) q = q.eq('model_id', target.model_id);
   if (target.accessory_id) q = q.eq('accessory_id', target.accessory_id);
-  const { data: existing } = await q.maybeSingle();
+  const { data: existing, error: fetchError } = await q.maybeSingle();
+  if (fetchError) throw fetchError;
 
   if (existing) {
-    await supabase.from('wishlists').delete().eq('id', existing.id);
+    const { error: deleteError } = await supabase.from('wishlists').delete().eq('id', existing.id);
+    if (deleteError) throw deleteError;
     return false;
   }
   const { error } = await supabase.from('wishlists').insert({

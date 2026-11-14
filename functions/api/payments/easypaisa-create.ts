@@ -31,13 +31,15 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       });
     }
 
+    // TODO: Implement server-side Easypaisa encrypted hash request signing using env.EASYPAISA_HASH_KEY
+    // and return { status: 'redirect', redirectUrl: '...', formAction: '...', formFields: { ... } }
     return new Response(
       JSON.stringify({
-        status: 'ready',
+        status: 'pending_integration',
         gateway: 'easypaisa',
-        reference: body.referenceNumber || `EP-${Date.now()}`,
+        message: 'Online payment is not available yet, please use bank transfer or COD.',
       }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+      { status: 501, headers: { 'Content-Type': 'application/json' } }
     );
   } catch {
     return new Response(JSON.stringify({ error: 'Malformed request' }), {

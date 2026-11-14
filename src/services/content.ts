@@ -49,6 +49,17 @@ export async function saveBranchAdmin(branch: Partial<Branch> & { name: string; 
   return data as Branch;
 }
 
+export async function deleteBranchAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.branches = s.branches.filter((b) => b.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('branches').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function listBanners(includeInactive = false): Promise<Banner[]> {
   if (!isSupabaseConfigured || !supabase) {
     return getDemoState()
@@ -94,6 +105,17 @@ export async function saveBannerAdmin(banner: Partial<Banner> & { title: string;
   return data as Banner;
 }
 
+export async function deleteBannerAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.banners = s.banners.filter((b) => b.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('banners').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function listOffers(includeInactive = false): Promise<Offer[]> {
   if (!isSupabaseConfigured || !supabase) {
     return getDemoState().offers.filter((o) => includeInactive || o.is_active);
@@ -134,6 +156,17 @@ export async function saveOfferAdmin(offer: Partial<Offer> & { title: string }):
   return data as Offer;
 }
 
+export async function deleteOfferAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.offers = s.offers.filter((o) => o.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('offers').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function listFaqs(includeInactive = false): Promise<FAQ[]> {
   if (!isSupabaseConfigured || !supabase) {
     return getDemoState()
@@ -172,6 +205,17 @@ export async function saveFaqAdmin(faq: Partial<FAQ> & { question: string; answe
   const { data, error } = await supabase.from('faqs').upsert(faq).select('*').single();
   if (error) throw error;
   return data as FAQ;
+}
+
+export async function deleteFaqAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.faqs = s.faqs.filter((f) => f.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('faqs').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export async function getStaticPage(slug: string): Promise<StaticPage | null> {
@@ -261,6 +305,7 @@ export async function saveNewsPostAdmin(
       excerpt: post.excerpt ?? '',
       content_markdown: post.content_markdown ?? '',
       image_url: post.image_url ?? null,
+      related_model_id: post.related_model_id ?? null,
       published_at: post.published_at ?? now,
       is_published: post.is_published ?? true,
       created_at: now,
@@ -269,8 +314,25 @@ export async function saveNewsPostAdmin(
     saveDemoState();
     return created;
   }
-  const { data, error } = await supabase.from('news_posts').upsert(post).select('*').single();
+  const { data, error } = await supabase
+    .from('news_posts')
+    .upsert({
+      ...post,
+      related_model_id: post.related_model_id ?? null,
+    })
+    .select('*')
+    .single();
   if (error) throw error;
   return data as NewsPost;
 }
 
+export async function deleteNewsPostAdmin(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.newsPosts = (s.newsPosts ?? []).filter((n) => n.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('news_posts').delete().eq('id', id);
+  if (error) throw error;
+}

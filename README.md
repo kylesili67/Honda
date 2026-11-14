@@ -60,6 +60,8 @@ Configure these as **Encrypted Secrets** in Cloudflare Dashboard if enabling ser
 | `EMAIL_API_KEY`, `EMAIL_FROM`, `ADMIN_NOTIFY_EMAIL` | Transactional email provider credentials & sender address |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server-side verification secret |
 
+> **Payment Gateway Status:** Gateway integration pending: needs merchant documentation & server-side hash credentials. Until merchant signing and callback verification are completed in `/functions/api/payments/*`, JazzCash/Easypaisa checkout/booking endpoints return HTTP `503` (unconfigured) or `501 pending_integration` and prevent unverified `'paid'` status creation.
+
 ---
 
 ## Deploying to Cloudflare (Workers & Pages via GitHub)

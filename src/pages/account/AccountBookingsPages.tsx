@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Printer } from 'lucide-react';
@@ -16,6 +17,7 @@ import {
   Button,
   Card,
   EmptyState,
+  Modal,
   Skeleton,
   StatusChip,
   Stepper,
@@ -98,6 +100,9 @@ export function AccountBookingDetailPage() {
     enabled: Boolean(bookingNumber),
   });
 
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
   if (isLoading) return <Skeleton className="h-80 w-full" />;
 
   if (!booking) {
@@ -114,9 +119,11 @@ export function AccountBookingDetailPage() {
   const canCancel = ['pending', 'confirmed'].includes(booking.status);
 
   const handleCancel = async () => {
+    setCancelling(true);
     try {
       await requestBookingCancel(booking.id);
       toast({ title: 'Booking cancelled', variant: 'success' });
+      setCancelModalOpen(false);
       void refetch();
     } catch (err) {
       toast({
@@ -124,6 +131,8 @@ export function AccountBookingDetailPage() {
         description: err instanceof Error ? err.message : 'Unable to cancel',
         variant: 'error',
       });
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -162,7 +171,7 @@ export function AccountBookingDetailPage() {
             Receipt
           </Button>
           {canCancel && (
-            <Button size="sm" variant="destructive" onClick={() => void handleCancel()}>
+            <Button size="sm" variant="destructive" onClick={() => setCancelModalOpen(true)}>
               Cancel Booking
             </Button>
           )}
@@ -212,6 +221,45 @@ export function AccountBookingDetailPage() {
           />
         </Card>
       </div>
+
+      <Modal
+        open={cancelModalOpen}
+        onClose={() => {
+          if (!cancelling) setCancelModalOpen(false);
+        }}
+        title="Cancel Bike Booking"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-[#26282C]">
+            Are you sure you want to cancel booking{' '}
+            <strong className="font-mono-tabular">{booking.booking_number}</strong> for{' '}
+            <strong>{booking.variant?.model?.name || 'this motorcycle'}</strong>?
+          </p>
+          <p className="text-xs text-[#6B7078]">
+            Any verified token refund is processed by the showroom team according to cancellation policy.
+          </p>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={cancelling}
+              onClick={() => setCancelModalOpen(false)}
+            >
+              Keep Booking
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              loading={cancelling}
+              onClick={() => void handleCancel()}
+            >
+              Confirm Cancellation
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

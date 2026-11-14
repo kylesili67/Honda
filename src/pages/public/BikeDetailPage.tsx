@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Check, GitCompareArrows, Heart, ShieldCheck } from 'lucide-react';
@@ -46,6 +46,13 @@ export function BikeDetailPage() {
 
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [selectedColorId, setSelectedColorId] = useState<string>('');
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0);
+
+  useEffect(() => {
+    setSelectedVariantId('');
+    setSelectedColorId('');
+    setSelectedImageIdx(0);
+  }, [slug]);
 
   const activeVariant = useMemo(() => {
     if (!bike?.variants?.length) return undefined;
@@ -62,10 +69,15 @@ export function BikeDetailPage() {
     const matched = activeColor
       ? bike.images.filter((i) => i.color_id === activeColor.id || !i.color_id)
       : bike.images;
-    return matched.length > 0 ? matched : bike.images;
+    const pool = matched.length > 0 ? matched : bike.images;
+    const order: Record<string, number> = { front: 0, right: 1, back: 2, left: 3 };
+    return pool.slice().sort((a, b) => {
+      const ra = a.view_angle ? (order[a.view_angle] ?? 4) : 4;
+      const rb = b.view_angle ? (order[b.view_angle] ?? 4) : 4;
+      return ra !== rb ? ra - rb : a.sort_order - b.sort_order;
+    });
   }, [bike, activeColor]);
 
-  const [selectedImageIdx, setSelectedImageIdx] = useState(0);
   const currentImg = colorImages[selectedImageIdx] ?? colorImages[0];
 
   const availableComboStock = bike
@@ -75,6 +87,7 @@ export function BikeDetailPage() {
   usePageMeta({
     title: bike?.seo_title || (bike ? `${bike.name} | ${settings.brand_name}` : `Motorcycle | ${settings.brand_name}`),
     description: bike?.seo_description || bike?.tagline || undefined,
+    image: bike?.images?.find((i) => i.is_primary)?.url ?? bike?.images?.[0]?.url ?? null,
     jsonLd:
       bike && activeVariant
         ? {
@@ -143,9 +156,17 @@ export function BikeDetailPage() {
       toast({ title: 'Sign in required', description: 'Log in to save bikes to your wishlist.' });
       return;
     }
-    const added = await toggleWishlistItem(user.id, { model_id: bike.id });
-    void refetchWishlist();
-    toast({ title: added ? 'Saved to wishlist' : 'Removed from wishlist', variant: 'success' });
+    try {
+      const added = await toggleWishlistItem(user.id, { model_id: bike.id });
+      void refetchWishlist();
+      toast({ title: added ? 'Saved to wishlist' : 'Removed from wishlist', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Wishlist update failed',
+        description: err instanceof Error ? err.message : 'Unable to update wishlist',
+        variant: 'error',
+      });
+    }
   };
 
   const specRows: Array<{ label: string; value: string | number | null | undefined }> = activeVariant
@@ -278,11 +299,16 @@ export function BikeDetailPage() {
                     key={img.id}
                     type="button"
                     onClick={() => setSelectedImageIdx(i)}
-                    className={`w-24 shrink-0 overflow-hidden rounded-lg border cursor-pointer ${
+                    className={`relative w-24 shrink-0 overflow-hidden rounded-lg border cursor-pointer ${
                       i === selectedImageIdx ? 'border-[#D71920] ring-2 ring-[#D71920]/30' : 'border-[#E3E4E7]'
                     }`}
                   >
                     <SafeImage src={img.url} alt={img.alt_text} aspectClass="aspect-[4/3]" className="w-full aspect-[4/3]" />
+                    {img.view_angle && (
+                      <span className="absolute bottom-1 left-1 rounded bg-[#111214]/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+                        {img.view_angle}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

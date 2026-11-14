@@ -284,4 +284,13 @@
   transform: translate3d(0, 0, 0);
 }
 
+@keyframes bikeHoldFill {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
 

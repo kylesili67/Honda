@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -13,6 +13,7 @@ import { listBikes } from '../../services/bikes';
 import { uploadFileToBucket } from '../../services/storage';
 import { createTradeInRequest } from '../../services/tradeIns';
 import { Breadcrumb, Button, Card, FileUploader, Input, Select } from '../../components/ui/Primitives';
+import { TurnstileWidget, isTurnstileConfigured } from '../../components/ui/TurnstileWidget';
 
 const schema = z.object({
   name: z.string().min(2, 'Full name required'),
@@ -45,14 +46,17 @@ export function TradeInPage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const guestFolderRef = useRef(`guest/${crypto.randomUUID()}`);
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       name: profile?.full_name || '',
       phone: profile?.phone || '',
       email: profile?.email || user?.email || '',
@@ -68,12 +72,32 @@ export function TradeInPage() {
     },
   });
 
+  useEffect(() => {
+    reset(
+      {
+        name: profile?.full_name || '',
+        phone: profile?.phone || '',
+        email: profile?.email || user?.email || '',
+        current_make: '',
+        current_model: '',
+        year: 2022,
+        mileage_km: 15000,
+        condition: 'Good — well maintained',
+        registration_city: 'Islamabad',
+        expected_price: 120000,
+        interested_model_id: bikes[0]?.id || '',
+        hp_field: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [profile?.full_name, profile?.phone, profile?.email, user?.email, bikes, reset]);
+
   const handlePhotos = async (files: File[]) => {
     const remaining = Math.max(0, 5 - photos.length);
     if (remaining === 0) return;
     setUploading(true);
     try {
-      const folder = user?.id || 'guest';
+      const folder = user?.id || guestFolderRef.current;
       const uploaded: string[] = [];
       for (const file of files.slice(0, remaining)) {
         const res = await uploadFileToBucket('trade-in-photos', folder, file);
@@ -93,6 +117,10 @@ export function TradeInPage() {
   };
 
   const onSubmit = async (values: FormValues) => {
+    if (isTurnstileConfigured && !captchaToken) {
+      toast({ title: 'Please complete the security check below', variant: 'error' });
+      return;
+    }
     try {
       await createTradeInRequest({
         user_id: user?.id ?? null,
@@ -193,6 +221,8 @@ export function TradeInPage() {
             <Input label="Phone Number" {...register('phone')} error={errors.phone?.message} />
             <Input label="Email (Optional)" type="email" {...register('email')} error={errors.email?.message} />
           </div>
+
+          <TurnstileWidget onToken={setCaptchaToken} />
 
           <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
             Submit for Valuation

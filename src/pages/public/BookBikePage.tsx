@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -27,6 +27,7 @@ import {
   Skeleton,
   Textarea,
 } from '../../components/ui/Primitives';
+import { TurnstileWidget, isTurnstileConfigured } from '../../components/ui/TurnstileWidget';
 
 const schema = z.object({
   variant_id: z.string().min(1, 'Select a variant'),
@@ -75,6 +76,8 @@ export function BookBikePage() {
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [awaitingEmailConfirm, setAwaitingEmailConfirm] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const defaultVariant = searchParams.get('variant') || bike?.variants?.[0]?.id || '';
   const defaultColor = searchParams.get('color') || bike?.colors?.[0]?.id || '';
@@ -84,10 +87,11 @@ export function BookBikePage() {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       variant_id: defaultVariant,
       color_id: defaultColor,
       branch_id: defaultBranch,
@@ -100,6 +104,33 @@ export function BookBikePage() {
       hp_field: '',
     },
   });
+
+  useEffect(() => {
+    reset(
+      {
+        variant_id: defaultVariant,
+        color_id: defaultColor,
+        branch_id: defaultBranch,
+        customer_name: profile?.full_name || '',
+        customer_phone: profile?.phone || '',
+        customer_email: profile?.email || user?.email || '',
+        payment_method: 'bank_transfer',
+        notes: '',
+        accept_terms: true,
+        hp_field: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [
+    defaultVariant,
+    defaultColor,
+    defaultBranch,
+    profile?.full_name,
+    profile?.phone,
+    profile?.email,
+    user?.email,
+    reset,
+  ]);
 
   const selectedVariantId = watch('variant_id');
   const selectedColorId = watch('color_id');
@@ -132,18 +163,29 @@ export function BookBikePage() {
   const handleInlineAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthBusy(true);
+    setAwaitingEmailConfirm(false);
     try {
       if (authMode === 'login') {
         await signIn(authEmail, authPassword);
+        toast({ title: 'Signed in', description: 'Continue with your booking below.', variant: 'success' });
       } else {
-        await signUp({
+        const res = await signUp({
           email: authEmail,
           password: authPassword,
           fullName: authName,
           phone: authPhone,
         });
+        if (res.needsEmailConfirmation) {
+          setAwaitingEmailConfirm(true);
+          toast({
+            title: 'Confirm your email',
+            description: 'Check your email to confirm your account before completing booking.',
+            variant: 'info',
+          });
+        } else {
+          toast({ title: 'Signed in', description: 'Continue with your booking below.', variant: 'success' });
+        }
       }
-      toast({ title: 'Signed in', description: 'Continue with your booking below.', variant: 'success' });
     } catch (err) {
       toast({
         title: 'Authentication error',
@@ -158,6 +200,10 @@ export function BookBikePage() {
   const onSubmit = async (values: FormValues) => {
     if (!user) {
       toast({ title: 'Please sign in first', variant: 'error' });
+      return;
+    }
+    if (isTurnstileConfigured && !captchaToken) {
+      toast({ title: 'Please complete the security check below', variant: 'error' });
       return;
     }
     if (values.payment_method === 'bank_transfer' && !proofPath) {
@@ -178,10 +224,11 @@ export function BookBikePage() {
           amount: settings.booking_token_amount,
           referenceNumber: `BK-${Date.now()}`,
         });
-        if (gw.status === 'disabled') {
+        if (!gw.redirectUrl && !gw.formAction) {
           toast({
-            title: 'Gateway disabled',
-            description: gw.message || 'Please use Bank Transfer.',
+            title: 'Online payment unavailable',
+            description:
+              gw.message || 'Online payment is not available yet, please use bank transfer or COD.',
             variant: 'error',
           });
           return;
@@ -343,6 +390,11 @@ export function BookBikePage() {
                 <Button type="submit" loading={authBusy}>
                   {authMode === 'login' ? 'Sign In & Continue' : 'Create Account & Continue'}
                 </Button>
+                {awaitingEmailConfirm && (
+                  <p className="rounded-lg border border-[#B7791F]/30 bg-[#FFF8EB] p-3 text-xs text-[#26282C]">
+                    Account created! Please open the verification link sent to your inbox, then sign in above to submit your booking.
+                  </p>
+                )}
               </form>
             </Card>
           )}
@@ -448,6 +500,8 @@ export function BookBikePage() {
               {errors.accept_terms && (
                 <p className="text-xs text-[#C0262D]">{errors.accept_terms.message}</p>
               )}
+
+              <TurnstileWidget onToken={setCaptchaToken} />
 
               <Button type="submit" size="lg" className="w-full" loading={isSubmitting} disabled={!user}>
                 Submit Booking Token ({formatPKR(settings.booking_token_amount)})

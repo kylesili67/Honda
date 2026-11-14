@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Ruler, ShoppingBag } from 'lucide-react';
@@ -37,6 +37,11 @@ export function AccessoryDetailPage() {
   const [qty, setQty] = useState(1);
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
 
+  useEffect(() => {
+    setSelectedVariantId('');
+    setQty(1);
+  }, [slug]);
+
   const activeVariants = useMemo(
     () => (item?.variants ?? []).filter((v) => v.is_active),
     [item]
@@ -52,6 +57,7 @@ export function AccessoryDetailPage() {
   usePageMeta({
     title: item?.seo_title || (item ? `${item.name} | ${settings.brand_name}` : 'Accessory'),
     description: item?.seo_description || item?.description || undefined,
+    image: item?.images?.[0]?.url ?? null,
     jsonLd:
       item && selectedVariant
         ? {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +21,11 @@ export function AccountProfilePage() {
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFullName(profile?.full_name || '');
+    setPhone(profile?.phone || '');
+  }, [profile?.full_name, profile?.phone]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +81,11 @@ export function AccountAddressesPage() {
   const [province, setProvince] = useState('ICT');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    setFullName((prev) => prev || profile?.full_name || '');
+    setPhone((prev) => prev || profile?.phone || '');
+  }, [profile?.full_name, profile?.phone]);
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -95,6 +105,12 @@ export function AccountAddressesPage() {
       setAddressLine('');
       toast({ title: 'Address saved', variant: 'success' });
       void refetch();
+    } catch (err) {
+      toast({
+        title: 'Save failed',
+        description: err instanceof Error ? err.message : 'Unable to save address',
+        variant: 'error',
+      });
     } finally {
       setSaving(false);
     }
@@ -121,9 +137,17 @@ export function AccountAddressesPage() {
               type="button"
               aria-label="Delete address"
               onClick={async () => {
-                await deleteCustomerAddress(addr.id);
-                toast({ title: 'Address removed' });
-                void refetch();
+                try {
+                  await deleteCustomerAddress(addr.id);
+                  toast({ title: 'Address removed', variant: 'success' });
+                  void refetch();
+                } catch (err) {
+                  toast({
+                    title: 'Delete failed',
+                    description: err instanceof Error ? err.message : 'Unable to remove address',
+                    variant: 'error',
+                  });
+                }
               }}
               className="p-2 text-[#6B7078] hover:text-[#C0262D] cursor-pointer"
             >

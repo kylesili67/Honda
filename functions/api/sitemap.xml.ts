@@ -12,18 +12,20 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
     '/bikes',
     '/compare',
     '/emi-calculator',
+    '/find-your-perfect-bike',
     '/test-ride',
     '/trade-in',
     '/inquiry',
     '/accessories',
     '/service-booking',
     '/branches',
+    '/news',
     '/faq',
     '/about',
     '/contact',
   ];
 
-  let dynamicPaths: string[] = [];
+  const dynamicPaths: string[] = [];
 
   if (context.env.SUPABASE_URL && context.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
@@ -31,9 +33,10 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
         apikey: context.env.SUPABASE_SERVICE_ROLE_KEY,
         Authorization: `Bearer ${context.env.SUPABASE_SERVICE_ROLE_KEY}`,
       };
-      const [bikesRes, accRes] = await Promise.all([
+      const [bikesRes, accRes, newsRes] = await Promise.all([
         fetch(`${context.env.SUPABASE_URL}/rest/v1/bike_models?select=slug&status=eq.published`, { headers }),
         fetch(`${context.env.SUPABASE_URL}/rest/v1/accessories?select=slug&status=eq.published`, { headers }),
+        fetch(`${context.env.SUPABASE_URL}/rest/v1/news_posts?select=slug&is_published=eq.true`, { headers }),
       ]);
       if (bikesRes.ok) {
         const bikes = (await bikesRes.json()) as Array<{ slug: string }>;
@@ -42,6 +45,10 @@ export const onRequestGet = async (context: { request: Request; env: Env }) => {
       if (accRes.ok) {
         const accs = (await accRes.json()) as Array<{ slug: string }>;
         dynamicPaths.push(...accs.map((a) => `/accessories/${a.slug}`));
+      }
+      if (newsRes.ok) {
+        const posts = (await newsRes.json()) as Array<{ slug: string }>;
+        dynamicPaths.push(...posts.map((n) => `/news/${n.slug}`));
       }
     } catch {
       // Fallback to static URLs only

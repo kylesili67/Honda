@@ -122,7 +122,7 @@ export function CartPage() {
               <h2 className="text-base font-semibold text-[#111214]">Order Summary</h2>
               <div className="flex gap-2">
                 <Input
-                  placeholder="Coupon (try GEAR10)"
+                  placeholder="Enter coupon code"
                   value={couponCode}
                   onChange={(e) => setCouponCode(e.target.value)}
                 />

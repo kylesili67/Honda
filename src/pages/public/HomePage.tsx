@@ -21,6 +21,7 @@ import { formatDateKarachi, formatPKR } from '../../lib/format';
 import { usePageMeta } from '../../lib/seo';
 import { listBikeCategories, listBikes } from '../../services/bikes';
 import { listBanners, listFaqs, listNewsPosts, listOffers } from '../../services/content';
+import { BikeAngleImage } from '../../components/bikes/BikeAngleImage';
 import { BikeFinderWizard } from '../../components/bikes/BikeFinderWizard';
 import { Accordion, Button, Modal, SafeImage, Skeleton } from '../../components/ui/Primitives';
 import { CountUpNumber, Reveal } from '../../components/ui/ScrollReveal';
@@ -201,15 +202,16 @@ export function HomePage() {
             <div className="lg:col-span-6 relative">
               <div
                 key={activeSlide.id}
-                className="overflow-hidden rounded-2xl border border-white/10 bg-[#18191D] shadow-2xl"
+                className="group overflow-hidden rounded-2xl border border-white/10 bg-[#18191D] shadow-2xl"
               >
-                <img
-                  src={activeSlide.images?.find((i) => i.is_primary)?.url ?? activeSlide.images?.[0]?.url ?? MEDIA.heroShowroomBike}
+                <BikeAngleImage
+                  images={activeSlide.images}
+                  fallbackSrc={MEDIA.heroShowroomBike}
                   alt={activeSlide.name}
-                  loading="eager"
-                  fetchPriority="high"
-                  referrerPolicy="no-referrer"
-                  className="aspect-[16/10] w-full object-cover transition-transform duration-700 hover:scale-[1.03]"
+                  aspectRatio="16/10"
+                  priority
+                  className="bg-[#18191D]"
+                  enableGroupZoom={false}
                 />
               </div>
             </div>
@@ -303,21 +305,18 @@ export function HomePage() {
               ref={rangeScrollRef}
               className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-3"
             >
-              {sortedBikes.map((bike) => {
-                const img = bike.images?.find((i) => i.is_primary)?.url ?? bike.images?.[0]?.url ?? null;
-                return (
-                  <article
-                    key={bike.id}
-                    className="group snap-start shrink-0 w-[290px] sm:w-[340px] rounded-xl border border-[#E3E4E7] bg-white overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
-                  >
-                    <Link to={`/bikes/${bike.slug}`} className="block bg-[#F5F5F6] overflow-hidden">
-                      <SafeImage
-                        src={img}
-                        alt={bike.name}
-                        aspectClass="aspect-[4/3]"
-                        className="w-full aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.05]"
-                      />
-                    </Link>
+              {sortedBikes.map((bike) => (
+                <article
+                  key={bike.id}
+                  className="group snap-start shrink-0 w-[290px] sm:w-[340px] rounded-xl border border-[#E3E4E7] bg-white overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <Link to={`/bikes/${bike.slug}`} className="block bg-[#F5F5F6] overflow-hidden">
+                    <BikeAngleImage
+                      images={bike.images}
+                      alt={bike.name}
+                      aspectRatio="4/3"
+                    />
+                  </Link>
                     <div className="p-5 flex-1 flex flex-col">
                       <span className="text-xs text-[#6B7078]">
                         {bike.category?.name} · {bike.engine_cc} cc
@@ -345,8 +344,7 @@ export function HomePage() {
                       </div>
                     </div>
                   </article>
-                );
-              })}
+              ))}
             </div>
           )}
         </section>
@@ -394,11 +392,15 @@ export function HomePage() {
 
               {(() => {
                 const ev = electricBikes[evIdx % electricBikes.length];
-                const evImg = ev.images?.find((i) => i.is_primary)?.url ?? ev.images?.[0]?.url ?? null;
                 return (
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center rounded-2xl border border-white/10 bg-[#1B1D21] p-6 sm:p-8">
-                    <div className="lg:col-span-6 overflow-hidden rounded-xl bg-[#111214]">
-                      <SafeImage src={evImg} alt={ev.name} aspectClass="aspect-[16/10]" className="w-full aspect-[16/10]" />
+                    <div className="group lg:col-span-6 overflow-hidden rounded-xl bg-[#111214]">
+                      <BikeAngleImage
+                        images={ev.images}
+                        alt={ev.name}
+                        aspectRatio="16/10"
+                        className="bg-[#111214]"
+                      />
                     </div>
                     <div className="lg:col-span-6 space-y-4">
                       <h3 className="font-display text-3xl font-bold">{ev.name}</h3>
@@ -656,42 +658,57 @@ export function HomePage() {
               ref={newsScrollRef}
               className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-3"
             >
-              {newsPosts.slice(0, 5).map((post) => (
-                <article
-                  key={post.id}
-                  className="group snap-start shrink-0 w-[290px] sm:w-[360px] rounded-xl border border-[#E3E4E7] bg-white overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
-                >
-                  {post.image_url && (
-                    <Link to={`/news/${post.slug}`} className="block bg-[#F5F5F6] overflow-hidden">
-                      <SafeImage
-                        src={post.image_url}
-                        alt={post.title}
-                        aspectClass="aspect-[16/10]"
-                        className="w-full aspect-[16/10] transition-transform duration-300 group-hover:scale-[1.04]"
-                      />
-                    </Link>
-                  )}
-                  <div className="p-5 flex-1 flex flex-col">
-                    <p className="text-xs text-[#6B7078] flex items-center gap-1.5 tabular-nums">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {formatDateKarachi(post.published_at)}
-                    </p>
-                    <Link to={`/news/${post.slug}`} className="mt-2 block">
-                      <h3 className="text-base font-bold text-[#111214] group-hover:text-[#D71920] transition-colors line-clamp-2">
-                        {post.title}
-                      </h3>
-                    </Link>
-                    <p className="mt-2 text-xs text-[#6B7078] line-clamp-3 flex-1">{post.excerpt}</p>
-                    <Link
-                      to={`/news/${post.slug}`}
-                      className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#D71920] hover:underline"
-                    >
-                      Read More
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </article>
-              ))}
+              {newsPosts.slice(0, 5).map((post) => {
+                const linkedBike = post.related_model_id
+                  ? bikes.find((b) => b.id === post.related_model_id)
+                  : undefined;
+
+                return (
+                  <article
+                    key={post.id}
+                    className="group snap-start shrink-0 w-[290px] sm:w-[360px] rounded-xl border border-[#E3E4E7] bg-white overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
+                  >
+                    {(linkedBike || post.image_url) && (
+                      <Link to={`/news/${post.slug}`} className="block bg-[#F5F5F6] overflow-hidden">
+                        {linkedBike ? (
+                          <BikeAngleImage
+                            images={linkedBike.images}
+                            fallbackSrc={post.image_url}
+                            alt={post.title}
+                            aspectRatio="16/10"
+                          />
+                        ) : (
+                          <SafeImage
+                            src={post.image_url}
+                            alt={post.title}
+                            aspectClass="aspect-[16/10]"
+                            className="w-full aspect-[16/10] transition-transform duration-300 group-hover:scale-[1.04]"
+                          />
+                        )}
+                      </Link>
+                    )}
+                    <div className="p-5 flex-1 flex flex-col">
+                      <p className="text-xs text-[#6B7078] flex items-center gap-1.5 tabular-nums">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {formatDateKarachi(post.published_at)}
+                      </p>
+                      <Link to={`/news/${post.slug}`} className="mt-2 block">
+                        <h3 className="text-base font-bold text-[#111214] group-hover:text-[#D71920] transition-colors line-clamp-2">
+                          {post.title}
+                        </h3>
+                      </Link>
+                      <p className="mt-2 text-xs text-[#6B7078] line-clamp-3 flex-1">{post.excerpt}</p>
+                      <Link
+                        to={`/news/${post.slug}`}
+                        className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#D71920] hover:underline"
+                      >
+                        Read More
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </section>
         </Reveal>

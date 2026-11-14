@@ -82,16 +82,16 @@ export default function App() {
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SettingsProvider>
-          <AuthProvider>
-            <CartProvider>
-              <ToastProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <CartProvider>
                 <BrowserRouter>
                   <SplashScreen />
                   <AppRoutes />
                 </BrowserRouter>
-              </ToastProvider>
-            </CartProvider>
-          </AuthProvider>
+              </CartProvider>
+            </AuthProvider>
+          </ToastProvider>
         </SettingsProvider>
       </QueryClientProvider>
     </AppErrorBoundary>

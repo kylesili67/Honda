@@ -11,6 +11,12 @@ import type {
 } from '../types/database';
 import { getDemoState, saveDemoState, uid } from './demoStore';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ensureUuid(candidate?: string): string {
+  return candidate && UUID_RE.test(candidate) ? candidate : crypto.randomUUID();
+}
+
 export interface BikeFilterParams {
   categorySlug?: string;
   minCc?: number;
@@ -68,10 +74,11 @@ export async function listBikes(filters: BikeFilterParams = {}): Promise<BikeMod
 
     const variantIds = models.flatMap((m) => (m.variants ?? []).map((v) => v.id));
     if (variantIds.length > 0) {
-      const { data: stockData } = await supabase
+      const { data: stockData, error: stockError } = await supabase
         .from('bike_stock')
         .select('*')
         .in('variant_id', variantIds);
+      if (stockError) throw stockError;
       const stockRows = (stockData ?? []) as BikeStock[];
       models = models.map((m) => ({
         ...m,
@@ -193,10 +200,11 @@ export async function getBikeBySlug(slug: string): Promise<BikeModel | null> {
   const model = data as BikeModel;
   const variantIds = (model.variants ?? []).map((v) => v.id);
   if (variantIds.length > 0) {
-    const { data: stockData } = await supabase
+    const { data: stockData, error: stockError } = await supabase
       .from('bike_stock')
       .select('*')
       .in('variant_id', variantIds);
+    if (stockError) throw stockError;
     model.stock = (stockData ?? []) as BikeStock[];
   } else {
     model.stock = [];
@@ -228,10 +236,11 @@ export async function getBikeById(id: string): Promise<BikeModel | null> {
   const model = data as BikeModel;
   const variantIds = (model.variants ?? []).map((v) => v.id);
   if (variantIds.length > 0) {
-    const { data: stockData } = await supabase
+    const { data: stockData, error: stockError } = await supabase
       .from('bike_stock')
       .select('*')
       .in('variant_id', variantIds);
+    if (stockError) throw stockError;
     model.stock = (stockData ?? []) as BikeStock[];
   } else {
     model.stock = [];
@@ -315,7 +324,7 @@ export async function saveBikeModel(
         category: cat,
         variants: payload.variants.map((v) => ({ ...v, model_id: prev.id })),
         colors: payload.colors.map((c) => ({ ...c, model_id: prev.id })),
-        images: payload.images.map((i) => ({ ...i, model_id: prev.id })),
+        images: payload.images.map((i) => ({ ...i, view_angle: i.view_angle ?? null, model_id: prev.id })),
         stock: payload.stock,
         updated_at: now,
       };
@@ -341,7 +350,12 @@ export async function saveBikeModel(
         category: cat,
         variants: payload.variants.map((v) => ({ ...v, id: v.id || uid('var'), model_id: newId })),
         colors: payload.colors.map((c) => ({ ...c, id: c.id || uid('col'), model_id: newId })),
-        images: payload.images.map((i) => ({ ...i, id: i.id || uid('img'), model_id: newId })),
+        images: payload.images.map((i) => ({
+          ...i,
+          id: i.id || uid('img'),
+          view_angle: i.view_angle ?? null,
+          model_id: newId,
+        })),
         stock: payload.stock,
       };
       s.bikes.unshift(created);
@@ -349,6 +363,8 @@ export async function saveBikeModel(
       return created;
     }
   }
+
+  const prevModel = payload.id ? await getBikeById(payload.id) : null;
 
   const modelRow = {
     name: payload.name,
@@ -373,18 +389,93 @@ export async function saveBikeModel(
     modelId = data.id;
   }
 
-  for (const v of payload.variants) {
-    const row = { ...v, model_id: modelId };
-    await supabase.from('bike_variants').upsert(row);
+  // Normalize UUIDs so newly added child records remap stock/image FK references cleanly
+  const variantIdMap = new Map<string, string>();
+  const normalizedVariants = payload.variants.map((v) => {
+    const resolvedId = ensureUuid(v.id);
+    variantIdMap.set(v.id, resolvedId);
+    return { ...v, id: resolvedId, model_id: modelId! };
+  });
+
+  const colorIdMap = new Map<string, string>();
+  const normalizedColors = payload.colors.map((c) => {
+    const resolvedId = ensureUuid(c.id);
+    colorIdMap.set(c.id, resolvedId);
+    return { ...c, id: resolvedId, model_id: modelId! };
+  });
+
+  const normalizedImages = payload.images.map((img) => ({
+    ...img,
+    id: ensureUuid(img.id),
+    color_id: img.color_id ? (colorIdMap.get(img.color_id) ?? img.color_id) : null,
+    view_angle: img.view_angle ?? null,
+    model_id: modelId!,
+  }));
+
+  const normalizedStock = payload.stock.map((st) => ({
+    ...st,
+    id: ensureUuid(st.id),
+    variant_id: variantIdMap.get(st.variant_id) ?? st.variant_id,
+    color_id: colorIdMap.get(st.color_id) ?? st.color_id,
+  }));
+
+  // Delete removed variants, colors, images, and track price history changes
+  if (prevModel) {
+    const nextVarIds = new Set(normalizedVariants.map((v) => v.id));
+    const removedVarIds = (prevModel.variants ?? []).map((v) => v.id).filter((id) => !nextVarIds.has(id));
+    if (removedVarIds.length > 0) {
+      const { error: delVarErr } = await supabase.from('bike_variants').delete().in('id', removedVarIds);
+      if (delVarErr) throw delVarErr;
+    }
+
+    const nextColIds = new Set(normalizedColors.map((c) => c.id));
+    const removedColIds = (prevModel.colors ?? []).map((c) => c.id).filter((id) => !nextColIds.has(id));
+    if (removedColIds.length > 0) {
+      const { error: delColErr } = await supabase.from('bike_colors').delete().in('id', removedColIds);
+      if (delColErr) throw delColErr;
+    }
+
+    const nextImgIds = new Set(normalizedImages.map((i) => i.id));
+    const removedImgIds = (prevModel.images ?? []).map((i) => i.id).filter((id) => !nextImgIds.has(id));
+    if (removedImgIds.length > 0) {
+      const { error: delImgErr } = await supabase.from('bike_images').delete().in('id', removedImgIds);
+      if (delImgErr) throw delImgErr;
+    }
   }
-  for (const c of payload.colors) {
-    await supabase.from('bike_colors').upsert({ ...c, model_id: modelId });
+
+  for (const v of normalizedVariants) {
+    const { error: varErr } = await supabase.from('bike_variants').upsert(v);
+    if (varErr) throw varErr;
+
+    if (prevModel) {
+      const oldVar = (prevModel.variants ?? []).find((ov) => ov.id === v.id);
+      if (oldVar && oldVar.ex_showroom_price !== v.ex_showroom_price) {
+        const { error: histErr } = await supabase.from('bike_price_history').insert({
+          variant_id: v.id,
+          old_price: oldVar.ex_showroom_price,
+          new_price: v.ex_showroom_price,
+          changed_by: actorId,
+        });
+        if (histErr) throw histErr;
+      }
+    }
   }
-  for (const img of payload.images) {
-    await supabase.from('bike_images').upsert({ ...img, model_id: modelId });
+
+  for (const c of normalizedColors) {
+    const { error: colErr } = await supabase.from('bike_colors').upsert(c);
+    if (colErr) throw colErr;
   }
-  for (const st of payload.stock) {
-    await supabase.from('bike_stock').upsert(st, { onConflict: 'variant_id,color_id,branch_id' });
+
+  for (const img of normalizedImages) {
+    const { error: imgErr } = await supabase.from('bike_images').upsert(img);
+    if (imgErr) throw imgErr;
+  }
+
+  for (const st of normalizedStock) {
+    const { error: stErr } = await supabase
+      .from('bike_stock')
+      .upsert(st, { onConflict: 'variant_id,color_id,branch_id' });
+    if (stErr) throw stErr;
   }
 
   const refreshed = await getBikeById(modelId!);
@@ -392,7 +483,18 @@ export async function saveBikeModel(
   return refreshed;
 }
 
-export async function updateBikeStockRow(stockRow: BikeStock): Promise<void> {
+export async function deleteBikeModel(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.bikes = s.bikes.filter((b) => b.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('bike_models').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateBikeStockRow(stockRow: Omit<BikeStock, 'id'> & { id?: string }): Promise<void> {
   if (!isSupabaseConfigured || !supabase) {
     const s = getDemoState();
     for (const b of s.bikes) {
@@ -403,17 +505,28 @@ export async function updateBikeStockRow(stockRow: BikeStock): Promise<void> {
           x.branch_id === stockRow.branch_id
       );
       if (idx >= 0) {
-        b.stock![idx] = stockRow;
+        b.stock![idx] = { ...b.stock![idx], ...stockRow };
       } else if ((b.variants ?? []).some((v) => v.id === stockRow.variant_id)) {
-        b.stock = [...(b.stock ?? []), stockRow];
+        b.stock = [...(b.stock ?? []), { ...stockRow, id: stockRow.id || uid('stk') }];
       }
     }
     saveDemoState();
     return;
   }
 
+  const payload: Omit<BikeStock, 'id'> & { id?: string } = {
+    variant_id: stockRow.variant_id,
+    color_id: stockRow.color_id,
+    branch_id: stockRow.branch_id,
+    quantity: stockRow.quantity,
+    reserved: stockRow.reserved,
+  };
+  if (stockRow.id && UUID_RE.test(stockRow.id)) {
+    payload.id = stockRow.id;
+  }
+
   const { error } = await supabase
     .from('bike_stock')
-    .upsert(stockRow, { onConflict: 'variant_id,color_id,branch_id' });
+    .upsert(payload, { onConflict: 'variant_id,color_id,branch_id' });
   if (error) throw error;
 }

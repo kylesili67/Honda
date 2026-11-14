@@ -11,6 +11,7 @@ import type {
   ReturnStatus,
 } from '../types/database';
 import { getDemoState, saveDemoState, uid } from './demoStore';
+import { sendEmailNotification } from './notifications';
 
 export async function listDeliveryZones(): Promise<DeliveryZone[]> {
   if (!isSupabaseConfigured || !supabase) {
@@ -20,6 +21,15 @@ export async function listDeliveryZones(): Promise<DeliveryZone[]> {
     .from('delivery_zones')
     .select('*')
     .eq('is_active', true);
+  if (error) throw error;
+  return (data ?? []) as DeliveryZone[];
+}
+
+export async function listAllDeliveryZonesAdmin(): Promise<DeliveryZone[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return getDemoState().deliveryZones;
+  }
+  const { data, error } = await supabase.from('delivery_zones').select('*').order('name');
   if (error) throw error;
   return (data ?? []) as DeliveryZone[];
 }
@@ -53,6 +63,7 @@ export async function validateCoupon(code: string, subtotal: number): Promise<Co
 
 export interface CreateOrderInput {
   user_id: string;
+  customer_email?: string | null;
   items: Array<{
     variant_id: string;
     name_snapshot: string;
@@ -174,6 +185,12 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
     }
 
     saveDemoState();
+    void sendEmailNotification({
+      to: input.customer_email,
+      template: 'order_created',
+      subject: `Order Placed (${orderNumber})`,
+      variables: { order_number: orderNumber, total_pkr: total },
+    });
     return order;
   }
 
@@ -197,6 +214,14 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   const orderNumber = typeof data === 'string' ? data : (data as { order_number: string }).order_number;
   const created = await getOrderByNumber(orderNumber);
   if (!created) throw new Error('Order created but could not reload details');
+
+  void sendEmailNotification({
+    to: input.customer_email,
+    template: 'order_created',
+    subject: `Order Placed (${created.order_number})`,
+    variables: { order_number: created.order_number, total_pkr: created.total },
+  });
+
   return created;
 }
 
@@ -289,11 +314,40 @@ export async function updateOrderAdmin(
       created_at: new Date().toISOString(),
     });
     saveDemoState();
+    const owner = s.users.find((u) => u.id === order.user_id);
+    if (updates.status && owner?.email) {
+      void sendEmailNotification({
+        to: owner.email,
+        template: 'order_status_updated',
+        subject: `Order ${order.order_number} Update: ${updates.status}`,
+        variables: { order_number: order.order_number, status: updates.status },
+      });
+    }
     return;
   }
 
   const { error } = await supabase.from('orders').update(updates).eq('id', id);
   if (error) throw error;
+
+  if (updates.status) {
+    const order = await getOrderById(id);
+    if (order) {
+      const { data: prof, error: profErr } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('id', order.user_id)
+        .maybeSingle();
+      if (profErr) throw profErr;
+      if (prof?.email) {
+        void sendEmailNotification({
+          to: prof.email as string,
+          template: 'order_status_updated',
+          subject: `Order ${order.order_number} Update: ${updates.status}`,
+          variables: { order_number: order.order_number, status: updates.status },
+        });
+      }
+    }
+  }
 }
 
 export async function createReturnRequest(input: {

@@ -13,8 +13,13 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
     );
   }
 
-  return new Response(JSON.stringify({ received: true }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  // TODO: Verify Easypaisa callback signature using env.EASYPAISA_HASH_KEY,
+  // validate transaction amount/reference, and update Supabase payments via SUPABASE_SERVICE_ROLE_KEY.
+  return new Response(
+    JSON.stringify({
+      status: 'pending_integration',
+      message: 'Easypaisa callback signature verification is pending implementation.',
+    }),
+    { status: 501, headers: { 'Content-Type': 'application/json' } }
+  );
 };

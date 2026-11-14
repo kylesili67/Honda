@@ -90,9 +90,17 @@ export function BikesCatalogPage() {
       toast({ title: 'Sign in required', description: 'Please log in to save motorcycles.' });
       return;
     }
-    const added = await toggleWishlistItem(user.id, { model_id: modelId });
-    void refetchWishlist();
-    toast({ title: added ? 'Saved to wishlist' : 'Removed from wishlist', variant: 'success' });
+    try {
+      const added = await toggleWishlistItem(user.id, { model_id: modelId });
+      void refetchWishlist();
+      toast({ title: added ? 'Saved to wishlist' : 'Removed from wishlist', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Wishlist update failed',
+        description: err instanceof Error ? err.message : 'Unable to update wishlist',
+        variant: 'error',
+      });
+    }
   };
 
   const FilterPanel = (

@@ -9,6 +9,15 @@ export type StorageBucket =
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+};
+
+const demoPreviewUrls = new Map<string, string>();
+
 export async function uploadFileToBucket(
   bucket: StorageBucket,
   folderPrefix: string,
@@ -29,12 +38,15 @@ export async function uploadFileToBucket(
     );
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const safePath = `${folderPrefix}/${crypto.randomUUID()}.${ext}`;
+  const ext = MIME_TO_EXT[file.type] || 'bin';
+  const safePrefix = folderPrefix.replace(/^\/+|\/+$/g, '') || 'uploads';
+  const safePath = `${safePrefix}/${crypto.randomUUID()}.${ext}`;
 
   if (!isSupabaseConfigured || !supabase) {
     const objectUrl = URL.createObjectURL(file);
-    return { path: `${bucket}/${safePath}`, url: objectUrl };
+    const fullDemoPath = `${bucket}/${safePath}`;
+    demoPreviewUrls.set(fullDemoPath, objectUrl);
+    return { path: fullDemoPath, url: objectUrl };
   }
 
   const { error } = await supabase.storage.from(bucket).upload(safePath, file, {
@@ -44,10 +56,38 @@ export async function uploadFileToBucket(
   if (error) throw error;
 
   if (bucket === 'trade-in-photos' || bucket === 'payment-proofs') {
-    const { data } = await supabase.storage.from(bucket).createSignedUrl(safePath, 3600);
-    return { path: safePath, url: data?.signedUrl || safePath };
+    const { data, error: signError } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(safePath, 3600);
+    if (signError) throw signError;
+    return { path: safePath, url: data.signedUrl };
   }
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(safePath);
   return { path: safePath, url: data.publicUrl };
+}
+
+export async function createSignedStorageUrl(
+  bucket: StorageBucket,
+  path: string,
+  expiresIn = 300
+): Promise<string> {
+  if (!path) throw new Error('Missing file path');
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:') || path.startsWith('data:')) {
+    return path;
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    const cached = demoPreviewUrls.get(path) || demoPreviewUrls.get(`${bucket}/${path}`);
+    if (cached) return cached;
+    throw new Error('Preview is only available for newly uploaded files in demo mode.');
+  }
+
+  const normalizedPath = path.startsWith(`${bucket}/`) ? path.slice(bucket.length + 1) : path;
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(normalizedPath, expiresIn);
+  if (error) throw error;
+  if (!data?.signedUrl) throw new Error('Unable to generate signed file URL');
+  return data.signedUrl;
 }

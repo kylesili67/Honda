@@ -8,10 +8,12 @@ import { useToast } from '../../context/ToastContext';
 import { formatDateTimeKarachi, formatPKR } from '../../lib/format';
 import { usePageMeta } from '../../lib/seo';
 import { createReturnRequest, getOrderByNumber, listMyOrders } from '../../services/orders';
+import { uploadFileToBucket } from '../../services/storage';
 import {
   Button,
   Card,
   EmptyState,
+  FileUploader,
   Modal,
   Select,
   Skeleton,
@@ -100,6 +102,8 @@ export function AccountOrderDetailPage() {
   const [returnType, setReturnType] = useState<'return' | 'exchange'>('return');
   const [reason, setReason] = useState('Wrong size / fit');
   const [details, setDetails] = useState('');
+  const [returnPhotos, setReturnPhotos] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   if (isLoading) return <Skeleton className="h-72 w-full" />;
@@ -114,6 +118,28 @@ export function AccountOrderDetailPage() {
     );
   }
 
+  const handleReturnPhotos = async (files: File[]) => {
+    if (!user || files.length === 0) return;
+    setUploadingPhotos(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) {
+        const res = await uploadFileToBucket('payment-proofs', `${user.id}/returns`, file);
+        uploaded.push(res.path);
+      }
+      setReturnPhotos((prev) => [...prev, ...uploaded].slice(0, 4));
+      toast({ title: `${uploaded.length} photo(s) uploaded`, variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Photo upload failed',
+        description: err instanceof Error ? err.message : 'Unable to upload return photo',
+        variant: 'error',
+      });
+    } finally {
+      setUploadingPhotos(false);
+    }
+  };
+
   const handleReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -126,13 +152,15 @@ export function AccountOrderDetailPage() {
         reason,
         details,
         item_ids: (order.items ?? []).map((i) => i.id),
-        photo_paths: [],
+        photo_paths: returnPhotos,
       });
       toast({
         title: `Return ${created.return_number} submitted`,
         description: 'Our team will review eligibility within 1–2 working days.',
         variant: 'success',
       });
+      setDetails('');
+      setReturnPhotos([]);
       setReturnOpen(false);
     } catch (err) {
       toast({
@@ -211,6 +239,12 @@ export function AccountOrderDetailPage() {
               <dd>−{formatPKR(order.discount_amount)}</dd>
             </div>
           )}
+          {order.loyalty_discount > 0 && (
+            <div className="flex justify-between text-[#1E8E4E]">
+              <dt>Loyalty Points Discount</dt>
+              <dd>−{formatPKR(order.loyalty_discount)}</dd>
+            </div>
+          )}
           <div className="flex justify-between font-bold text-base pt-2 border-t border-[#E3E4E7]">
             <dt>Total</dt>
             <dd>{formatPKR(order.total)}</dd>
@@ -218,7 +252,17 @@ export function AccountOrderDetailPage() {
         </dl>
       </Card>
 
-      <Modal open={returnOpen} onClose={() => setReturnOpen(false)} title="Request Return or Exchange">
+      <Modal
+        open={returnOpen}
+        onClose={() => {
+          if (!submitting && !uploadingPhotos) {
+            setDetails('');
+            setReturnPhotos([]);
+            setReturnOpen(false);
+          }
+        }}
+        title="Request Return or Exchange"
+      >
         <form onSubmit={handleReturnSubmit} className="space-y-4">
           <Select
             label="Request Type"
@@ -242,10 +286,23 @@ export function AccountOrderDetailPage() {
             value={details}
             onChange={(e) => setDetails(e.target.value)}
           />
+          <FileUploader
+            label="Item Condition Photos (Optional, up to 4)"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            maxFiles={4}
+            uploading={uploadingPhotos}
+            onFilesSelected={(files) => void handleReturnPhotos(files)}
+          />
+          {returnPhotos.length > 0 && (
+            <p className="text-xs font-medium text-[#1E8E4E]">
+              {returnPhotos.length} photo(s) attached
+            </p>
+          )}
           <p className="text-xs text-[#6B7078]">
             Return window: {settings.return_window_days} days from delivery for unused items.
           </p>
-          <Button type="submit" className="w-full" loading={submitting}>
+          <Button type="submit" className="w-full" loading={submitting} disabled={uploadingPhotos}>
             Submit Return Request
           </Button>
         </form>

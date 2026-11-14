@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -11,6 +11,7 @@ import { useToast } from '../../context/ToastContext';
 import { trackEvent } from '../../lib/analytics';
 import { formatPKR } from '../../lib/format';
 import { usePageMeta } from '../../lib/seo';
+import { listCustomerAddresses } from '../../services/admin';
 import { listBranches } from '../../services/content';
 import { createOrder, listDeliveryZones, validateCoupon } from '../../services/orders';
 import { initiateGatewayPayment } from '../../services/payments';
@@ -26,18 +27,38 @@ import {
   Select,
   Textarea,
 } from '../../components/ui/Primitives';
+import { TurnstileWidget, isTurnstileConfigured } from '../../components/ui/TurnstileWidget';
 
-const schema = z.object({
-  fulfillment: z.enum(['delivery', 'pickup']),
-  pickup_branch_id: z.string().optional(),
-  shipping_name: z.string().min(2, 'Recipient name required'),
-  shipping_phone: z.string().min(10, 'Phone number required'),
-  shipping_city: z.string().optional(),
-  shipping_address: z.string().optional(),
-  delivery_zone_id: z.string().optional(),
-  payment_method: z.enum(['cod', 'bank_transfer', 'jazzcash', 'easypaisa']),
-  notes: z.string().optional(),
-});
+const schema = z
+  .object({
+    fulfillment: z.enum(['delivery', 'pickup']),
+    pickup_branch_id: z.string().optional(),
+    shipping_name: z.string().min(2, 'Recipient name required'),
+    shipping_phone: z.string().min(10, 'Phone number required'),
+    shipping_city: z.string().optional(),
+    shipping_address: z.string().optional(),
+    delivery_zone_id: z.string().optional(),
+    payment_method: z.enum(['cod', 'bank_transfer', 'jazzcash', 'easypaisa']),
+    notes: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.fulfillment === 'delivery') {
+      if (!val.shipping_city || val.shipping_city.trim().length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['shipping_city'],
+          message: 'City is required for delivery',
+        });
+      }
+      if (!val.shipping_address || val.shipping_address.trim().length < 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['shipping_address'],
+          message: 'Street address is required for delivery',
+        });
+      }
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -56,6 +77,12 @@ export function CheckoutPage() {
 
   const { data: zones = [] } = useQuery({ queryKey: ['delivery-zones'], queryFn: listDeliveryZones });
   const { data: branches = [] } = useQuery({ queryKey: ['branches'], queryFn: () => listBranches() });
+  const { data: savedAddresses = [] } = useQuery({
+    queryKey: ['customer-addresses', user?.id],
+    queryFn: () => listCustomerAddresses(user!.id),
+    enabled: Boolean(user?.id),
+  });
+  const defaultAddress = savedAddresses.find((a) => a.is_default) ?? savedAddresses[0];
 
   const [couponCode, setCouponCode] = useState(params.get('coupon') || '');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -70,26 +97,69 @@ export function CheckoutPage() {
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [awaitingEmailConfirm, setAwaitingEmailConfirm] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       fulfillment: 'delivery',
       pickup_branch_id: branches[0]?.id || '',
-      shipping_name: profile?.full_name || '',
-      shipping_phone: profile?.phone || '',
-      shipping_city: 'Islamabad',
-      shipping_address: '',
+      shipping_name: defaultAddress?.full_name || profile?.full_name || '',
+      shipping_phone: defaultAddress?.phone || profile?.phone || '',
+      shipping_city: defaultAddress?.city || 'Islamabad',
+      shipping_address: defaultAddress?.address_line || '',
       delivery_zone_id: zones[0]?.id || '',
       payment_method: 'cod',
       notes: '',
     },
   });
+
+  useEffect(() => {
+    reset(
+      {
+        fulfillment: 'delivery',
+        pickup_branch_id: branches[0]?.id || '',
+        shipping_name: defaultAddress?.full_name || profile?.full_name || '',
+        shipping_phone: defaultAddress?.phone || profile?.phone || '',
+        shipping_city: defaultAddress?.city || 'Islamabad',
+        shipping_address: defaultAddress?.address_line || '',
+        delivery_zone_id: zones[0]?.id || '',
+        payment_method: 'cod',
+        notes: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [
+    branches,
+    zones,
+    defaultAddress,
+    profile?.full_name,
+    profile?.phone,
+    reset,
+  ]);
+
+  const couponAutoTriedRef = useRef(false);
+  useEffect(() => {
+    const urlCoupon = params.get('coupon')?.trim();
+    if (!urlCoupon || couponAutoTriedRef.current || appliedCoupon || subtotal <= 0) return;
+    couponAutoTriedRef.current = true;
+    void validateCoupon(urlCoupon, subtotal)
+      .then((cp) => {
+        setAppliedCoupon(cp);
+        toast({ title: `Coupon ${cp.code} applied`, variant: 'success' });
+      })
+      .catch(() => {
+        // Leave couponCode in the input so user can edit or inspect error manually
+      });
+  }, [params, appliedCoupon, subtotal, toast]);
 
   const fulfillment = watch('fulfillment');
   const zoneId = watch('delivery_zone_id');
@@ -151,13 +221,29 @@ export function CheckoutPage() {
   const handleInlineAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthBusy(true);
+    setAwaitingEmailConfirm(false);
     try {
       if (authMode === 'login') {
         await signIn(authEmail, authPassword);
+        toast({ title: 'Signed in', variant: 'success' });
       } else {
-        await signUp({ email: authEmail, password: authPassword, fullName: authName, phone: authPhone });
+        const res = await signUp({
+          email: authEmail,
+          password: authPassword,
+          fullName: authName,
+          phone: authPhone,
+        });
+        if (res.needsEmailConfirmation) {
+          setAwaitingEmailConfirm(true);
+          toast({
+            title: 'Confirm your email',
+            description: 'Check your email to confirm your account before completing checkout.',
+            variant: 'info',
+          });
+        } else {
+          toast({ title: 'Signed in', variant: 'success' });
+        }
       }
-      toast({ title: 'Signed in', variant: 'success' });
     } catch (err) {
       toast({
         title: 'Auth failed',
@@ -174,8 +260,8 @@ export function CheckoutPage() {
       toast({ title: 'Please sign in to place order', variant: 'error' });
       return;
     }
-    if (values.fulfillment === 'delivery' && !values.shipping_address?.trim()) {
-      toast({ title: 'Delivery address is required', variant: 'error' });
+    if (isTurnstileConfigured && !captchaToken) {
+      toast({ title: 'Please complete the security check below', variant: 'error' });
       return;
     }
     if (values.payment_method === 'cod' && !codAllowed) {
@@ -199,14 +285,20 @@ export function CheckoutPage() {
           amount: total,
           referenceNumber: `OD-${Date.now()}`,
         });
-        if (gw.status === 'disabled') {
-          toast({ title: 'Gateway disabled', description: gw.message, variant: 'error' });
+        if (!gw.redirectUrl && !gw.formAction) {
+          toast({
+            title: 'Online payment unavailable',
+            description:
+              gw.message || 'Online payment is not available yet, please use bank transfer or COD.',
+            variant: 'error',
+          });
           return;
         }
       }
 
       const order = await createOrder({
         user_id: user.id,
+        customer_email: user.email,
         items: items.map((i) => ({
           variant_id: i.variantId,
           name_snapshot: `${i.name} (${i.variantLabel})`,
@@ -292,6 +384,11 @@ export function CheckoutPage() {
                 <Button type="submit" loading={authBusy}>
                   {authMode === 'login' ? 'Sign In' : 'Sign Up'}
                 </Button>
+                {awaitingEmailConfirm && (
+                  <p className="rounded-lg border border-[#B7791F]/30 bg-[#FFF8EB] p-3 text-xs text-[#26282C]">
+                    Account created! Please check your email and confirm your account, then sign in above to place your order.
+                  </p>
+                )}
               </form>
             </Card>
           )}
@@ -319,6 +416,31 @@ export function CheckoutPage() {
 
               {fulfillment === 'delivery' ? (
                 <>
+                  {savedAddresses.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-[#6B7078] mb-1.5">Saved Addresses</p>
+                      <div className="flex flex-wrap gap-2">
+                        {savedAddresses.map((addr) => (
+                          <button
+                            key={addr.id}
+                            type="button"
+                            onClick={() => {
+                              setValue('shipping_name', addr.full_name, { shouldDirty: true, shouldValidate: true });
+                              setValue('shipping_phone', addr.phone, { shouldDirty: true, shouldValidate: true });
+                              setValue('shipping_city', addr.city, { shouldDirty: true, shouldValidate: true });
+                              setValue('shipping_address', addr.address_line, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              });
+                            }}
+                            className="rounded-lg border border-[#E3E4E7] bg-[#F5F5F6] px-3 py-1.5 text-xs font-medium text-[#111214] hover:border-[#D71920] cursor-pointer"
+                          >
+                            {addr.label} · {addr.city}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Select label="Delivery Zone" {...register('delivery_zone_id')}>
                       {zones.map((z) => (
@@ -327,9 +449,14 @@ export function CheckoutPage() {
                         </option>
                       ))}
                     </Select>
-                    <Input label="City" {...register('shipping_city')} />
+                    <Input label="City" {...register('shipping_city')} error={errors.shipping_city?.message} />
                   </div>
-                  <Textarea label="Street Address" rows={2} {...register('shipping_address')} />
+                  <Textarea
+                    label="Street Address"
+                    rows={2}
+                    {...register('shipping_address')}
+                    error={errors.shipping_address?.message}
+                  />
                 </>
               ) : (
                 <Select label="Pickup Showroom Branch" {...register('pickup_branch_id')}>
@@ -396,6 +523,8 @@ export function CheckoutPage() {
               )}
 
               <Textarea label="Order Notes (Optional)" rows={2} {...register('notes')} />
+
+              <TurnstileWidget onToken={setCaptchaToken} />
 
               <Button type="submit" size="lg" className="w-full" loading={isSubmitting} disabled={!user}>
                 Place Order ({formatPKR(total)})

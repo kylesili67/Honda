@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
@@ -21,6 +21,7 @@ import {
   updateRegistrationProgress,
 } from '../../services/bookings';
 import { listAllInquiriesAdmin, updateInquiryAdmin } from '../../services/inquiries';
+import { createSignedStorageUrl } from '../../services/storage';
 import { listAllTestRidesAdmin, updateTestRideStatus } from '../../services/testRides';
 import { listAllTradeInsAdmin, updateTradeInAdmin } from '../../services/tradeIns';
 import type {
@@ -30,7 +31,7 @@ import type {
   TestRideStatus,
   TradeInStatus,
 } from '../../types/database';
-import { Button, Card, Input, Select, StatusChip, Stepper, Textarea } from '../../components/ui/Primitives';
+import { Button, Card, Input, Modal, Select, StatusChip, Stepper, Textarea } from '../../components/ui/Primitives';
 
 export function AdminBookingsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
@@ -132,27 +133,56 @@ export function AdminBookingDetailPage() {
   const [regStep, setRegStep] = useState<RegistrationStep>('booked');
   const [regNote, setRegNote] = useState('');
 
+  useEffect(() => {
+    if (booking) {
+      setStatus(booking.status);
+      setInternalNotes(booking.internal_notes || '');
+      if (booking.registration_progress?.current_step) {
+        setRegStep(booking.registration_progress.current_step);
+      }
+    }
+  }, [booking]);
+
   if (!booking) return <p className="text-sm text-[#6B7078]">Loading booking...</p>;
 
   const effectiveStatus = status || booking.status;
 
   const handleSaveBooking = async () => {
     if (!user) return;
-    await updateBookingAdmin(
-      booking.id,
-      { status: effectiveStatus as BookingStatus, internal_notes: internalNotes || booking.internal_notes },
-      user.id
-    );
-    toast({ title: 'Booking updated', variant: 'success' });
-    void refetch();
+    try {
+      await updateBookingAdmin(
+        booking.id,
+        {
+          status: effectiveStatus as BookingStatus,
+          internal_notes: internalNotes.trim() ? internalNotes : null,
+        },
+        user.id
+      );
+      toast({ title: 'Booking updated', variant: 'success' });
+      void refetch();
+    } catch (err) {
+      toast({
+        title: 'Booking update failed',
+        description: err instanceof Error ? err.message : 'Unable to save booking update',
+        variant: 'error',
+      });
+    }
   };
 
   const handleAdvanceReg = async () => {
     if (!user) return;
-    await updateRegistrationProgress(booking.id, regStep, regNote || 'Updated by showroom staff', user.id);
-    toast({ title: 'Registration step updated', variant: 'success' });
-    setRegNote('');
-    void refetch();
+    try {
+      await updateRegistrationProgress(booking.id, regStep, regNote || 'Updated by showroom staff', user.id);
+      toast({ title: 'Registration step updated', variant: 'success' });
+      setRegNote('');
+      void refetch();
+    } catch (err) {
+      toast({
+        title: 'Registration update failed',
+        description: err instanceof Error ? err.message : 'Unable to update registration progress',
+        variant: 'error',
+      });
+    }
   };
 
   return (
@@ -181,7 +211,7 @@ export function AdminBookingDetailPage() {
           <Textarea
             label="Internal Staff Notes"
             disabled={!canWrite}
-            defaultValue={booking.internal_notes || ''}
+            value={internalNotes}
             onChange={(e) => setInternalNotes(e.target.value)}
             rows={3}
           />
@@ -282,9 +312,17 @@ export function AdminInquiriesPage() {
                     disabled={!canWrite}
                     value={inq.status}
                     onChange={async (e) => {
-                      await updateInquiryAdmin(inq.id, { status: e.target.value as InquiryStatus });
-                      toast({ title: 'Inquiry status updated', variant: 'success' });
-                      void refetch();
+                      try {
+                        await updateInquiryAdmin(inq.id, { status: e.target.value as InquiryStatus });
+                        toast({ title: 'Inquiry status updated', variant: 'success' });
+                        void refetch();
+                      } catch (err) {
+                        toast({
+                          title: 'Inquiry update failed',
+                          description: err instanceof Error ? err.message : 'Unable to update inquiry',
+                          variant: 'error',
+                        });
+                      }
                     }}
                     className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
                   >
@@ -355,9 +393,17 @@ export function AdminTestRidesPage() {
                     disabled={!canWrite}
                     value={tr.status}
                     onChange={async (e) => {
-                      await updateTestRideStatus(tr.id, { status: e.target.value as TestRideStatus });
-                      toast({ title: 'Test ride updated', variant: 'success' });
-                      void refetch();
+                      try {
+                        await updateTestRideStatus(tr.id, { status: e.target.value as TestRideStatus });
+                        toast({ title: 'Test ride updated', variant: 'success' });
+                        void refetch();
+                      } catch (err) {
+                        toast({
+                          title: 'Test ride update failed',
+                          description: err instanceof Error ? err.message : 'Unable to update test ride',
+                          variant: 'error',
+                        });
+                      }
                     }}
                     className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
                   >
@@ -384,6 +430,32 @@ export function AdminTradeInsPage() {
     queryFn: listAllTradeInsAdmin,
   });
 
+  const [photoModalTitle, setPhotoModalTitle] = useState('');
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [resolvedUrls, setResolvedUrls] = useState<string[]>([]);
+
+  const handleOpenPhotos = async (ownerName: string, bikeTitle: string, paths: string[]) => {
+    setPhotoModalTitle(`${ownerName} — ${bikeTitle}`);
+    setResolvedUrls([]);
+    setPhotoModalOpen(true);
+    setLoadingPhotos(true);
+    try {
+      const urls = await Promise.all(
+        paths.map((p) => createSignedStorageUrl('trade-in-photos', p, 300))
+      );
+      setResolvedUrls(urls);
+    } catch (err) {
+      toast({
+        title: 'Unable to load photos',
+        description: err instanceof Error ? err.message : 'Failed to create signed URLs',
+        variant: 'error',
+      });
+    } finally {
+      setLoadingPhotos(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -403,61 +475,125 @@ export function AdminTradeInsPage() {
             <tr>
               <th className="p-3.5">Owner</th>
               <th className="p-3.5">Current Bike</th>
+              <th className="p-3.5">Photos</th>
               <th className="p-3.5">Expected</th>
               <th className="p-3.5">Valuation (PKR)</th>
               <th className="p-3.5">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E3E4E7]">
-            {items.map((t) => (
-              <tr key={t.id}>
-                <td className="p-3.5">
-                  <p className="font-medium">{t.name}</p>
-                  <p className="text-xs text-[#6B7078]">{t.phone}</p>
-                </td>
-                <td className="p-3.5">
-                  {t.year} {t.current_make} {t.current_model} ({t.mileage_km.toLocaleString()} km)
-                </td>
-                <td className="p-3.5 tabular-nums">{formatPKR(t.expected_price)}</td>
-                <td className="p-3.5">
-                  <input
-                    type="number"
-                    disabled={!canWrite}
-                    defaultValue={t.valuation_amount ?? ''}
-                    placeholder="Set PKR"
-                    onBlur={async (e) => {
-                      if (!e.target.value) return;
-                      await updateTradeInAdmin(t.id, {
-                        valuation_amount: Number(e.target.value),
-                        status: 'valued',
-                      });
-                      toast({ title: 'Valuation saved', variant: 'success' });
-                      void refetch();
-                    }}
-                    className="w-28 h-9 rounded border border-[#E3E4E7] px-2 text-xs tabular-nums"
-                  />
-                </td>
-                <td className="p-3.5">
-                  <select
-                    disabled={!canWrite}
-                    value={t.status}
-                    onChange={async (e) => {
-                      await updateTradeInAdmin(t.id, { status: e.target.value as TradeInStatus });
-                      toast({ title: 'Status updated', variant: 'success' });
-                      void refetch();
-                    }}
-                    className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
-                  >
-                    {TRADE_IN_STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
+            {items.map((t) => {
+              const photoCount = t.photo_paths?.length ?? 0;
+              return (
+                <tr key={t.id}>
+                  <td className="p-3.5">
+                    <p className="font-medium">{t.name}</p>
+                    <p className="text-xs text-[#6B7078]">{t.phone}</p>
+                  </td>
+                  <td className="p-3.5">
+                    {t.year} {t.current_make} {t.current_model} ({t.mileage_km.toLocaleString()} km)
+                  </td>
+                  <td className="p-3.5">
+                    {photoCount > 0 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void handleOpenPhotos(
+                            t.name,
+                            `${t.year} ${t.current_make} ${t.current_model}`,
+                            t.photo_paths
+                          )
+                        }
+                      >
+                        View Photos ({photoCount})
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-[#6B7078]">None</span>
+                    )}
+                  </td>
+                  <td className="p-3.5 tabular-nums">{formatPKR(t.expected_price)}</td>
+                  <td className="p-3.5">
+                    <input
+                      key={`${t.id}-${t.valuation_amount ?? ''}`}
+                      type="number"
+                      disabled={!canWrite}
+                      defaultValue={t.valuation_amount ?? ''}
+                      placeholder="Set PKR"
+                      onBlur={async (e) => {
+                        if (!e.target.value) return;
+                        const val = Number(e.target.value);
+                        if (Number.isNaN(val) || val === t.valuation_amount) return;
+                        try {
+                          await updateTradeInAdmin(t.id, {
+                            valuation_amount: val,
+                            status: 'valued',
+                          });
+                          toast({ title: 'Valuation saved', variant: 'success' });
+                          void refetch();
+                        } catch (err) {
+                          toast({
+                            title: 'Valuation update failed',
+                            description: err instanceof Error ? err.message : 'Unable to save valuation',
+                            variant: 'error',
+                          });
+                        }
+                      }}
+                      className="w-28 h-9 rounded border border-[#E3E4E7] px-2 text-xs tabular-nums"
+                    />
+                  </td>
+                  <td className="p-3.5">
+                    <select
+                      disabled={!canWrite}
+                      value={t.status}
+                      onChange={async (e) => {
+                        try {
+                          await updateTradeInAdmin(t.id, { status: e.target.value as TradeInStatus });
+                          toast({ title: 'Status updated', variant: 'success' });
+                          void refetch();
+                        } catch (err) {
+                          toast({
+                            title: 'Status update failed',
+                            description: err instanceof Error ? err.message : 'Unable to update status',
+                            variant: 'error',
+                          });
+                        }
+                      }}
+                      className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
+                    >
+                      {TRADE_IN_STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </Card>
+
+      <Modal open={photoModalOpen} onClose={() => setPhotoModalOpen(false)} title={`Trade-In Photos · ${photoModalTitle}`}>
+        {loadingPhotos ? (
+          <p className="text-sm text-[#6B7078]">Generating secure photo previews...</p>
+        ) : resolvedUrls.length === 0 ? (
+          <p className="text-sm text-[#6B7078]">No photo previews available.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {resolvedUrls.map((url, idx) => (
+              <a
+                key={`${url}-${idx}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block overflow-hidden rounded-lg border border-[#E3E4E7] bg-[#F5F5F6]"
+              >
+                <img src={url} alt={`Trade-in photo ${idx + 1}`} className="w-full h-48 object-cover" />
+              </a>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

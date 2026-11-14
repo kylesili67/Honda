@@ -34,14 +34,15 @@ export const onRequestPost = async (context: { request: Request; env: Env }) => 
       });
     }
 
-    // Server-side HMAC-SHA256 secure hash generation happens here using env.JAZZCASH_INTEGRITY_SALT
+    // TODO: Implement server-side JazzCash HMAC-SHA256 pp_SecureHash signing using env.JAZZCASH_INTEGRITY_SALT
+    // and return { status: 'redirect', formAction: env.JAZZCASH_API_URL, formFields: { ... } }
     return new Response(
       JSON.stringify({
-        status: 'ready',
+        status: 'pending_integration',
         gateway: 'jazzcash',
-        reference: body.referenceNumber || `JC-${Date.now()}`,
+        message: 'Online payment is not available yet, please use bank transfer or COD.',
       }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+      { status: 501, headers: { 'Content-Type': 'application/json' } }
     );
   } catch {
     return new Response(JSON.stringify({ error: 'Malformed request' }), {

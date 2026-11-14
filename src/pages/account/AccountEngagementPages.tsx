@@ -260,12 +260,20 @@ export function AccountWishlistPage() {
                 size="sm"
                 variant="outline"
                 onClick={async () => {
-                  await toggleWishlistItem(user!.id, {
-                    model_id: w.model_id ?? undefined,
-                    accessory_id: w.accessory_id ?? undefined,
-                  });
-                  toast({ title: 'Removed from wishlist' });
-                  void refetch();
+                  try {
+                    await toggleWishlistItem(user!.id, {
+                      model_id: w.model_id ?? undefined,
+                      accessory_id: w.accessory_id ?? undefined,
+                    });
+                    toast({ title: 'Removed from wishlist', variant: 'success' });
+                    void refetch();
+                  } catch (err) {
+                    toast({
+                      title: 'Update failed',
+                      description: err instanceof Error ? err.message : 'Unable to remove wishlist item',
+                      variant: 'error',
+                    });
+                  }
                 }}
               >
                 Remove
@@ -322,9 +330,17 @@ export function AccountComparisonsPage() {
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    await deleteSavedComparison(c.id);
-                    toast({ title: 'Comparison deleted' });
-                    void refetch();
+                    try {
+                      await deleteSavedComparison(c.id);
+                      toast({ title: 'Comparison deleted', variant: 'success' });
+                      void refetch();
+                    } catch (err) {
+                      toast({
+                        title: 'Delete failed',
+                        description: err instanceof Error ? err.message : 'Unable to delete comparison',
+                        variant: 'error',
+                      });
+                    }
                   }}
                 >
                   Delete

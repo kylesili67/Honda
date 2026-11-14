@@ -120,14 +120,28 @@ export async function recordRefundAdmin(input: {
     .single();
   if (error) throw error;
 
-  await supabase.from('payments').update({ status: 'refunded' }).eq('id', input.payment_id);
+  const { error: paymentUpdateError } = await supabase
+    .from('payments')
+    .update({ status: 'refunded' })
+    .eq('id', input.payment_id);
+  if (paymentUpdateError) throw paymentUpdateError;
+
   return data as Refund;
+}
+
+export interface GatewayInitiationResult {
+  status: string;
+  reference?: string;
+  message?: string;
+  redirectUrl?: string;
+  formAction?: string;
+  formFields?: Record<string, string>;
 }
 
 export async function initiateGatewayPayment(
   gateway: 'jazzcash' | 'easypaisa',
   payload: { payableType: 'booking' | 'order'; payableId: string; amount: number; referenceNumber: string }
-): Promise<{ status: string; reference?: string; message?: string }> {
+): Promise<GatewayInitiationResult> {
   const endpoint =
     gateway === 'jazzcash' ? '/api/payments/jazzcash-create' : '/api/payments/easypaisa-create';
   const res = await fetch(endpoint, {
@@ -135,5 +149,21 @@ export async function initiateGatewayPayment(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  return (await res.json()) as { status: string; reference?: string; message?: string };
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Online payment is not available yet (HTTP ${res.status}).`);
+  }
+
+  const parsed = (await res.json()) as GatewayInitiationResult & { error?: string };
+  if (!res.ok) {
+    return {
+      status: parsed.status || 'disabled',
+      message:
+        parsed.message ||
+        parsed.error ||
+        'Online payment is not available yet, please use bank transfer or COD.',
+    };
+  }
+  return parsed;
 }

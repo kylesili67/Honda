@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -16,6 +16,7 @@ import { listBranches } from '../../services/content';
 import { checkSlotAvailability, createTestRide } from '../../services/testRides';
 import type { TestRide } from '../../types/database';
 import { Breadcrumb, Button, Card, Input, Select } from '../../components/ui/Primitives';
+import { TurnstileWidget, isTurnstileConfigured } from '../../components/ui/TurnstileWidget';
 
 const schema = z.object({
   model_id: z.string().min(1, 'Select a motorcycle'),
@@ -49,16 +50,18 @@ export function TestRidePage() {
     bikes.find((b) => b.slug === bikeSlugParam)?.id || bikes[0]?.id || '';
 
   const [submitted, setSubmitted] = useState<TestRide | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       model_id: initialBikeId,
       branch_id: branches[0]?.id || '',
       ride_date: todayKarachiISO(),
@@ -69,6 +72,30 @@ export function TestRidePage() {
       hp_field: '',
     },
   });
+
+  useEffect(() => {
+    reset(
+      {
+        model_id: initialBikeId,
+        branch_id: branches[0]?.id || '',
+        ride_date: todayKarachiISO(),
+        slot_id: '',
+        customer_name: profile?.full_name || '',
+        customer_phone: profile?.phone || '',
+        customer_email: profile?.email || user?.email || '',
+        hp_field: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [
+    initialBikeId,
+    branches,
+    profile?.full_name,
+    profile?.phone,
+    profile?.email,
+    user?.email,
+    reset,
+  ]);
 
   const branchId = watch('branch_id');
   const rideDate = watch('ride_date');
@@ -81,6 +108,10 @@ export function TestRidePage() {
   });
 
   const onSubmit = async (values: FormValues) => {
+    if (isTurnstileConfigured && !captchaToken) {
+      toast({ title: 'Please complete the security check below', variant: 'error' });
+      return;
+    }
     try {
       const res = await createTestRide({
         user_id: user?.id ?? null,
@@ -181,7 +212,7 @@ export function TestRidePage() {
                     key={slot.id}
                     type="button"
                     disabled={full}
-                    onClick={() => setValue('slot_id', slot.id, { shouldValidate: true })}
+                    onClick={() => setValue('slot_id', slot.id, { shouldDirty: true, shouldValidate: true })}
                     className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
                       active
                         ? 'border-[#D71920] bg-[#D71920]/5 font-semibold text-[#111214]'
@@ -206,6 +237,8 @@ export function TestRidePage() {
             <Input label="Phone Number" {...register('customer_phone')} error={errors.customer_phone?.message} />
           </div>
           <Input label="Email Address" type="email" {...register('customer_email')} error={errors.customer_email?.message} />
+
+          <TurnstileWidget onToken={setCaptchaToken} />
 
           <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
             Request Test Ride

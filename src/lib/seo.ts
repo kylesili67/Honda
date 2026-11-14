@@ -4,6 +4,7 @@ interface PageMetaOptions {
   title: string;
   description?: string;
   canonicalPath?: string;
+  image?: string | null;
   jsonLd?: Record<string, unknown> | null;
 }
 
@@ -19,7 +20,7 @@ function setMetaTag(attr: 'name' | 'property', key: string, content: string) {
   el.setAttribute('content', content);
 }
 
-export function usePageMeta({ title, description, canonicalPath, jsonLd }: PageMetaOptions) {
+export function usePageMeta({ title, description, canonicalPath, image, jsonLd }: PageMetaOptions) {
   useEffect(() => {
     document.title = title;
     const desc =
@@ -35,9 +36,13 @@ export function usePageMeta({ title, description, canonicalPath, jsonLd }: PageM
     const origin = SITE_URL || window.location.origin;
     const path = canonicalPath ?? window.location.pathname;
     const fullUrl = `${origin}${path}`;
-    const ogImageUrl = `${origin}/og-default.png`;
-    setMetaTag('property', 'og:image', ogImageUrl);
-    setMetaTag('name', 'twitter:image', ogImageUrl);
+    const resolvedImage = image
+      ? /^https?:\/\//i.test(image)
+        ? image
+        : `${origin}${image.startsWith('/') ? image : `/${image}`}`
+      : `${origin}/og-default.png`;
+    setMetaTag('property', 'og:image', resolvedImage);
+    setMetaTag('name', 'twitter:image', resolvedImage);
 
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
@@ -62,5 +67,5 @@ export function usePageMeta({ title, description, canonicalPath, jsonLd }: PageM
       const s = document.getElementById('page-json-ld');
       if (s) s.remove();
     };
-  }, [title, description, canonicalPath, jsonLd]);
+  }, [title, description, canonicalPath, image, jsonLd]);
 }

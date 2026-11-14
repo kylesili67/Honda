@@ -7,6 +7,12 @@ import type {
 } from '../types/database';
 import { getDemoState, saveDemoState, uid } from './demoStore';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ensureUuid(candidate?: string): string {
+  return candidate && UUID_RE.test(candidate) ? candidate : crypto.randomUUID();
+}
+
 export interface AccessoryFilterParams {
   categorySlug?: string;
   compatibleModelId?: string;
@@ -212,6 +218,8 @@ export async function saveAccessory(payload: {
     }
   }
 
+  const prevAcc = payload.id ? await getAccessoryById(payload.id) : null;
+
   const row = {
     name: payload.name,
     slug: payload.slug,
@@ -236,20 +244,74 @@ export async function saveAccessory(payload: {
     accId = data.id;
   }
 
-  for (const v of payload.variants) {
-    await supabase.from('accessory_variants').upsert({ ...v, accessory_id: accId });
+  const normalizedVariants = payload.variants.map((v) => ({
+    ...v,
+    id: ensureUuid(v.id),
+    accessory_id: accId!,
+  }));
+
+  const normalizedImages = payload.images.map((img) => ({
+    ...img,
+    id: ensureUuid(img.id),
+    accessory_id: accId!,
+  }));
+
+  if (prevAcc) {
+    const nextVarIds = new Set(normalizedVariants.map((v) => v.id));
+    const removedVarIds = (prevAcc.variants ?? []).map((v) => v.id).filter((id) => !nextVarIds.has(id));
+    if (removedVarIds.length > 0) {
+      const { error: delVarErr } = await supabase
+        .from('accessory_variants')
+        .delete()
+        .in('id', removedVarIds);
+      if (delVarErr) throw delVarErr;
+    }
+
+    const nextImgIds = new Set(normalizedImages.map((i) => i.id));
+    const removedImgIds = (prevAcc.images ?? []).map((i) => i.id).filter((id) => !nextImgIds.has(id));
+    if (removedImgIds.length > 0) {
+      const { error: delImgErr } = await supabase
+        .from('accessory_images')
+        .delete()
+        .in('id', removedImgIds);
+      if (delImgErr) throw delImgErr;
+    }
   }
-  for (const img of payload.images) {
-    await supabase.from('accessory_images').upsert({ ...img, accessory_id: accId });
+
+  for (const v of normalizedVariants) {
+    const { error: varErr } = await supabase.from('accessory_variants').upsert(v);
+    if (varErr) throw varErr;
   }
-  await supabase.from('accessory_compatibility').delete().eq('accessory_id', accId);
+  for (const img of normalizedImages) {
+    const { error: imgErr } = await supabase.from('accessory_images').upsert(img);
+    if (imgErr) throw imgErr;
+  }
+
+  const { error: delCompatErr } = await supabase
+    .from('accessory_compatibility')
+    .delete()
+    .eq('accessory_id', accId);
+  if (delCompatErr) throw delCompatErr;
+
   if (payload.compatible_model_ids.length > 0) {
-    await supabase
+    const { error: insCompatErr } = await supabase
       .from('accessory_compatibility')
       .insert(payload.compatible_model_ids.map((model_id) => ({ accessory_id: accId!, model_id })));
+    if (insCompatErr) throw insCompatErr;
   }
 
   const refreshed = await getAccessoryById(accId!);
   if (!refreshed) throw new Error('Accessory saved but failed to reload');
   return refreshed;
+}
+
+export async function deleteAccessory(id: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = getDemoState();
+    s.accessories = s.accessories.filter((a) => a.id !== id);
+    saveDemoState();
+    return;
+  }
+  const { error } = await supabase.from('accessories').delete().eq('id', id);
+  if (error) throw error;
 }

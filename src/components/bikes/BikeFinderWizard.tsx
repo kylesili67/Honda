@@ -6,7 +6,8 @@ import { useCart } from '../../context/CartContext';
 import { useToast } from '../../context/ToastContext';
 import { formatPKR } from '../../lib/format';
 import { listBikes } from '../../services/bikes';
-import { Button, Card, SafeImage } from '../ui/Primitives';
+import { Button, Card } from '../ui/Primitives';
+import { BikeAngleImage } from './BikeAngleImage';
 
 type BudgetOption = 'under_200k' | '200k_350k' | 'above_350k' | 'any';
 type UseCaseOption = 'commute' | 'long_ride' | 'family';
@@ -210,11 +211,12 @@ export function BikeFinderWizard({ onClose }: { onClose?: () => void }) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {matchedBikes.map(({ bike, minPrice }) => {
-              const img = bike.images?.find((i) => i.is_primary)?.url ?? bike.images?.[0]?.url ?? null;
               const inCompare = compareIds.includes(bike.id);
               return (
-                <Card key={bike.id} className="overflow-hidden flex flex-col">
-                  <SafeImage src={img} alt={bike.name} aspectClass="aspect-[4/3]" className="w-full aspect-[4/3] bg-[#F5F5F6]" />
+                <Card key={bike.id} className="group overflow-hidden flex flex-col">
+                  <Link to={`/bikes/${bike.slug}`} onClick={onClose} className="block">
+                    <BikeAngleImage images={bike.images} alt={bike.name} aspectRatio="4/3" />
+                  </Link>
                   <div className="p-4 flex-1 flex flex-col">
                     <span className="text-xs text-[#6B7078]">
                       {bike.category?.name} · {bike.engine_cc} cc

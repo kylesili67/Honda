@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
@@ -33,6 +33,7 @@ import {
   listAllServiceAppointmentsAdmin,
   updateServiceAppointmentAdmin,
 } from '../../services/service';
+import { createSignedStorageUrl } from '../../services/storage';
 import type {
   OrderStatus,
   PaymentStatus,
@@ -130,22 +131,41 @@ export function AdminOrderDetailPage() {
   const [status, setStatus] = useState<OrderStatus | ''>('');
   const [courier, setCourier] = useState('');
   const [tracking, setTracking] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!order) return;
+    setStatus(order.status);
+    setCourier(order.courier_name || '');
+    setTracking(order.tracking_number || '');
+  }, [order?.id, order?.status, order?.courier_name, order?.tracking_number]);
 
   if (!order) return <p className="text-sm text-[#6B7078]">Loading order...</p>;
 
   const handleSave = async () => {
     if (!user) return;
-    await updateOrderAdmin(
-      order.id,
-      {
-        status: (status || order.status) as OrderStatus,
-        courier_name: courier || order.courier_name,
-        tracking_number: tracking || order.tracking_number,
-      },
-      user.id
-    );
-    toast({ title: 'Order updated', variant: 'success' });
-    void refetch();
+    setSaving(true);
+    try {
+      await updateOrderAdmin(
+        order.id,
+        {
+          status: (status || order.status) as OrderStatus,
+          courier_name: courier.trim() || null,
+          tracking_number: tracking.trim() || null,
+        },
+        user.id
+      );
+      toast({ title: 'Order updated', variant: 'success' });
+      void refetch();
+    } catch (err) {
+      toast({
+        title: 'Failed to update order',
+        description: err instanceof Error ? err.message : 'Please try again',
+        variant: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -174,17 +194,21 @@ export function AdminOrderDetailPage() {
           <Input
             label="Courier Name"
             disabled={!canWrite}
-            defaultValue={order.courier_name || ''}
+            value={courier}
             onChange={(e) => setCourier(e.target.value)}
             placeholder="e.g. TCS Express / Leopards"
           />
           <Input
             label="Tracking Number"
             disabled={!canWrite}
-            defaultValue={order.tracking_number || ''}
+            value={tracking}
             onChange={(e) => setTracking(e.target.value)}
           />
-          {canWrite && <Button onClick={() => void handleSave()}>Save Order Changes</Button>}
+          {canWrite && (
+            <Button loading={saving} onClick={() => void handleSave()}>
+              Save Order Changes
+            </Button>
+          )}
         </Card>
 
         <Card className="p-6 space-y-3">
@@ -225,21 +249,54 @@ export function AdminPaymentsPage() {
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState('');
   const [refundRef, setRefundRef] = useState('');
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [proofPreview, setProofPreview] = useState<{ url: string; path: string; isPdf: boolean } | null>(null);
+  const [loadingProofId, setLoadingProofId] = useState<string | null>(null);
+
+  const handleOpenProof = async (paymentId: string, proofPath: string) => {
+    setLoadingProofId(paymentId);
+    try {
+      const url = await createSignedStorageUrl('payment-proofs', proofPath, 300);
+      const isPdf = proofPath.toLowerCase().endsWith('.pdf');
+      setProofPreview({ url, path: proofPath, isPdf });
+    } catch (err) {
+      toast({
+        title: 'Unable to open proof',
+        description: err instanceof Error ? err.message : 'Could not load signed URL',
+        variant: 'error',
+      });
+    } finally {
+      setLoadingProofId(null);
+    }
+  };
 
   const handleRefund = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !refundTargetId) return;
-    await recordRefundAdmin({
-      payment_id: refundTargetId,
-      amount: refundAmount,
-      reason: refundReason,
-      processed_by: user.id,
-      reference: refundRef || null,
-    });
-    toast({ title: 'Refund recorded', variant: 'success' });
-    setRefundTargetId(null);
-    void refetch();
-    void refetchRefunds();
+    setRefundBusy(true);
+    try {
+      await recordRefundAdmin({
+        payment_id: refundTargetId,
+        amount: refundAmount,
+        reason: refundReason,
+        processed_by: user.id,
+        reference: refundRef.trim() || null,
+      });
+      toast({ title: 'Refund recorded', variant: 'success' });
+      setRefundTargetId(null);
+      setRefundReason('');
+      setRefundRef('');
+      void refetch();
+      void refetchRefunds();
+    } catch (err) {
+      toast({
+        title: 'Failed to record refund',
+        description: err instanceof Error ? err.message : 'Please try again',
+        variant: 'error',
+      });
+    } finally {
+      setRefundBusy(false);
+    }
   };
 
   return (
@@ -265,7 +322,18 @@ export function AdminPaymentsPage() {
                 <td className="p-3.5 uppercase text-xs font-semibold">{p.method.replace('_', ' ')}</td>
                 <td className="p-3.5 tabular-nums font-semibold">{formatPKR(p.amount)}</td>
                 <td className="p-3.5 text-xs text-[#6B7078]">
-                  {p.proof_path || p.gateway_reference || '—'}
+                  {p.proof_path ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={loadingProofId === p.id}
+                      onClick={() => void handleOpenProof(p.id, p.proof_path!)}
+                    >
+                      View Proof
+                    </Button>
+                  ) : (
+                    p.gateway_reference || '—'
+                  )}
                 </td>
                 <td className="p-3.5">
                   <select
@@ -273,9 +341,17 @@ export function AdminPaymentsPage() {
                     value={p.status}
                     onChange={async (e) => {
                       if (!user) return;
-                      await verifyPaymentAdmin(p.id, e.target.value as PaymentStatus, user.id);
-                      toast({ title: 'Payment status updated', variant: 'success' });
-                      void refetch();
+                      try {
+                        await verifyPaymentAdmin(p.id, e.target.value as PaymentStatus, user.id);
+                        toast({ title: 'Payment status updated', variant: 'success' });
+                        void refetch();
+                      } catch (err) {
+                        toast({
+                          title: 'Failed to update payment status',
+                          description: err instanceof Error ? err.message : 'Please try again',
+                          variant: 'error',
+                        });
+                      }
                     }}
                     className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
                   >
@@ -343,8 +419,36 @@ export function AdminPaymentsPage() {
             value={refundReason}
             onChange={(e) => setRefundReason(e.target.value)}
           />
-          <Button type="submit" className="w-full">Confirm Refund</Button>
+          <Button type="submit" loading={refundBusy} className="w-full">Confirm Refund</Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(proofPreview)}
+        onClose={() => setProofPreview(null)}
+        title="Payment Proof"
+      >
+        {proofPreview && (
+          <div className="space-y-3">
+            <p className="text-xs font-mono-tabular text-[#6B7078] break-all">{proofPreview.path}</p>
+            {proofPreview.isPdf ? (
+              <a
+                href={proofPreview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block text-sm font-semibold text-[#D71920] underline"
+              >
+                Open PDF Receipt in New Tab
+              </a>
+            ) : (
+              <img
+                src={proofPreview.url}
+                alt="Uploaded payment proof"
+                className="w-full max-h-[65vh] object-contain rounded-lg border border-[#E3E4E7]"
+              />
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );
@@ -359,6 +463,27 @@ export function AdminReturnsPage() {
     queryFn: listAllReturnsAdmin,
   });
 
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[] | null>(null);
+  const [loadingPhotosId, setLoadingPhotosId] = useState<string | null>(null);
+
+  const handleViewPhotos = async (returnId: string, paths: string[]) => {
+    setLoadingPhotosId(returnId);
+    try {
+      const urls = await Promise.all(
+        paths.map((p) => createSignedStorageUrl('payment-proofs', p, 300))
+      );
+      setPhotoPreviewUrls(urls);
+    } catch (err) {
+      toast({
+        title: 'Unable to load return photos',
+        description: err instanceof Error ? err.message : 'Could not fetch signed URLs',
+        variant: 'error',
+      });
+    } finally {
+      setLoadingPhotosId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="font-display text-3xl font-bold text-[#111214]">Returns &amp; Exchanges</h1>
@@ -369,6 +494,7 @@ export function AdminReturnsPage() {
               <th className="p-3.5">Return #</th>
               <th className="p-3.5">Order</th>
               <th className="p-3.5">Type &amp; Reason</th>
+              <th className="p-3.5">Photos</th>
               <th className="p-3.5">Status</th>
             </tr>
           </thead>
@@ -382,13 +508,35 @@ export function AdminReturnsPage() {
                   <p className="text-xs text-[#6B7078]">{r.details}</p>
                 </td>
                 <td className="p-3.5">
+                  {(r.photo_paths ?? []).length > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={loadingPhotosId === r.id}
+                      onClick={() => void handleViewPhotos(r.id, r.photo_paths)}
+                    >
+                      Photos ({r.photo_paths.length})
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-[#6B7078]">—</span>
+                  )}
+                </td>
+                <td className="p-3.5">
                   <select
                     disabled={!canWrite}
                     value={r.status}
                     onChange={async (e) => {
-                      await updateReturnAdmin(r.id, { status: e.target.value as ReturnStatus });
-                      toast({ title: 'Return status updated', variant: 'success' });
-                      void refetch();
+                      try {
+                        await updateReturnAdmin(r.id, { status: e.target.value as ReturnStatus });
+                        toast({ title: 'Return status updated', variant: 'success' });
+                        void refetch();
+                      } catch (err) {
+                        toast({
+                          title: 'Failed to update return status',
+                          description: err instanceof Error ? err.message : 'Please try again',
+                          variant: 'error',
+                        });
+                      }
                     }}
                     className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
                   >
@@ -402,6 +550,25 @@ export function AdminReturnsPage() {
           </tbody>
         </table>
       </Card>
+
+      <Modal
+        open={Boolean(photoPreviewUrls)}
+        onClose={() => setPhotoPreviewUrls(null)}
+        title="Return Request Photos"
+      >
+        {photoPreviewUrls && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[65vh] overflow-y-auto">
+            {photoPreviewUrls.map((url, idx) => (
+              <img
+                key={idx}
+                src={url}
+                alt={`Return evidence ${idx + 1}`}
+                className="w-full h-48 object-cover rounded-lg border border-[#E3E4E7]"
+              />
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -420,26 +587,40 @@ export function AdminServicePage() {
   const [workDone, setWorkDone] = useState('');
   const [partsUsed, setPartsUsed] = useState('');
   const [cost, setCost] = useState(0);
+  const [loggingHistory, setLoggingHistory] = useState(false);
 
   const handleLogHistory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!historyAppt || !user) return;
-    await addServiceHistoryEntry({
-      user_id: historyAppt.user_id,
-      appointment_id: historyAppt.id,
-      registration_number: historyAppt.registration_number,
-      model_name: historyAppt.model_name,
-      service_date: todayKarachiISO(),
-      odometer_km: odometer,
-      work_done: workDone,
-      parts_used: partsUsed || null,
-      cost,
-      created_by: user.id,
-    });
-    await updateServiceAppointmentAdmin(historyAppt.id, { status: 'completed' });
-    toast({ title: 'Service history logged & appointment completed', variant: 'success' });
-    setHistoryAppt(null);
-    void refetch();
+    setLoggingHistory(true);
+    try {
+      await addServiceHistoryEntry({
+        user_id: historyAppt.user_id,
+        appointment_id: historyAppt.id,
+        registration_number: historyAppt.registration_number,
+        model_name: historyAppt.model_name,
+        service_date: todayKarachiISO(),
+        odometer_km: odometer,
+        work_done: workDone,
+        parts_used: partsUsed || null,
+        cost,
+        created_by: user.id,
+      });
+      await updateServiceAppointmentAdmin(historyAppt.id, { status: 'completed' });
+      toast({ title: 'Service history logged & appointment completed', variant: 'success' });
+      setHistoryAppt(null);
+      setWorkDone('');
+      setPartsUsed('');
+      void refetch();
+    } catch (err) {
+      toast({
+        title: 'Failed to log service history',
+        description: err instanceof Error ? err.message : 'Please try again',
+        variant: 'error',
+      });
+    } finally {
+      setLoggingHistory(false);
+    }
   };
 
   return (
@@ -483,11 +664,19 @@ export function AdminServicePage() {
                     disabled={!canWrite}
                     value={sv.status}
                     onChange={async (e) => {
-                      await updateServiceAppointmentAdmin(sv.id, {
-                        status: e.target.value as ServiceAppointmentStatus,
-                      });
-                      toast({ title: 'Service status updated', variant: 'success' });
-                      void refetch();
+                      try {
+                        await updateServiceAppointmentAdmin(sv.id, {
+                          status: e.target.value as ServiceAppointmentStatus,
+                        });
+                        toast({ title: 'Service status updated', variant: 'success' });
+                        void refetch();
+                      } catch (err) {
+                        toast({
+                          title: 'Failed to update service status',
+                          description: err instanceof Error ? err.message : 'Please try again',
+                          variant: 'error',
+                        });
+                      }
                     }}
                     className="h-9 rounded border border-[#E3E4E7] px-2 text-xs"
                   >
@@ -515,7 +704,7 @@ export function AdminServicePage() {
           <Textarea label="Work Done" required rows={3} value={workDone} onChange={(e) => setWorkDone(e.target.value)} />
           <Input label="Parts Used" value={partsUsed} onChange={(e) => setPartsUsed(e.target.value)} />
           <Input label="Total Cost (PKR)" type="number" required value={cost} onChange={(e) => setCost(Number(e.target.value))} />
-          <Button type="submit" className="w-full">Save Record &amp; Complete</Button>
+          <Button type="submit" loading={loggingHistory} className="w-full">Save Record &amp; Complete</Button>
         </form>
       </Modal>
     </div>
@@ -581,6 +770,13 @@ export function AdminCustomerDetailPage() {
   const [notes, setNotes] = useState('');
   const [pointsDelta, setPointsDelta] = useState(50);
   const [pointsNote, setPointsNote] = useState('Showroom goodwill adjustment');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [savingPoints, setSavingPoints] = useState(false);
+
+  useEffect(() => {
+    if (!customer) return;
+    setNotes(customer.notes || '');
+  }, [customer?.id, customer?.notes]);
 
   if (!customer) return <p className="text-sm text-[#6B7078]">Customer not found.</p>;
 
@@ -597,16 +793,28 @@ export function AdminCustomerDetailPage() {
           <Textarea
             rows={3}
             disabled={!canWrite}
-            defaultValue={customer.notes || ''}
+            value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
           {canWrite && (
             <Button
               size="sm"
+              loading={savingNotes}
               onClick={async () => {
-                await updateCustomerNotesAdmin(customer.id, notes);
-                toast({ title: 'Customer notes saved', variant: 'success' });
-                void refetch();
+                setSavingNotes(true);
+                try {
+                  await updateCustomerNotesAdmin(customer.id, notes);
+                  toast({ title: 'Customer notes saved', variant: 'success' });
+                  void refetch();
+                } catch (err) {
+                  toast({
+                    title: 'Failed to save notes',
+                    description: err instanceof Error ? err.message : 'Please try again',
+                    variant: 'error',
+                  });
+                } finally {
+                  setSavingNotes(false);
+                }
               }}
             >
               Save Notes
@@ -635,17 +843,29 @@ export function AdminCustomerDetailPage() {
             <Button
               size="sm"
               variant="secondary"
+              loading={savingPoints}
               onClick={async () => {
                 if (!user) return;
-                await adjustLoyaltyPointsAdmin({
-                  user_id: customer.id,
-                  points: pointsDelta,
-                  reason: 'admin_adjust',
-                  note: pointsNote,
-                  actor_id: user.id,
-                });
-                toast({ title: 'Loyalty points adjusted & audited', variant: 'success' });
-                void refetch();
+                setSavingPoints(true);
+                try {
+                  await adjustLoyaltyPointsAdmin({
+                    user_id: customer.id,
+                    points: pointsDelta,
+                    reason: 'admin_adjust',
+                    note: pointsNote,
+                    actor_id: user.id,
+                  });
+                  toast({ title: 'Loyalty points adjusted & audited', variant: 'success' });
+                  void refetch();
+                } catch (err) {
+                  toast({
+                    title: 'Failed to adjust loyalty points',
+                    description: err instanceof Error ? err.message : 'Please try again',
+                    variant: 'error',
+                  });
+                } finally {
+                  setSavingPoints(false);
+                }
               }}
             >
               Apply Points Adjustment

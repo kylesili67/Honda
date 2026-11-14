@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -13,6 +13,7 @@ import { usePageMeta } from '../../lib/seo';
 import { listBikes } from '../../services/bikes';
 import { createInquiry } from '../../services/inquiries';
 import { Breadcrumb, Button, Card, Input, Select, Textarea } from '../../components/ui/Primitives';
+import { TurnstileWidget, isTurnstileConfigured } from '../../components/ui/TurnstileWidget';
 
 const schema = z.object({
   model_id: z.string().optional(),
@@ -41,14 +42,16 @@ export function InquiryPage() {
   const { data: bikes = [] } = useQuery({ queryKey: ['bikes-published'], queryFn: () => listBikes() });
   const preselectedId = bikes.find((b) => b.slug === bikeSlug)?.id || '';
   const [done, setDone] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: {
+    defaultValues: {
       model_id: preselectedId,
       name: profile?.full_name || '',
       phone: profile?.phone || '',
@@ -59,7 +62,26 @@ export function InquiryPage() {
     },
   });
 
+  useEffect(() => {
+    reset(
+      {
+        model_id: preselectedId,
+        name: profile?.full_name || '',
+        phone: profile?.phone || '',
+        email: profile?.email || user?.email || '',
+        preferred_contact_time: 'Morning (10 AM – 1 PM)',
+        message: '',
+        hp_field: '',
+      },
+      { keepDirtyValues: true }
+    );
+  }, [preselectedId, profile?.full_name, profile?.phone, profile?.email, user?.email, reset]);
+
   const onSubmit = async (values: FormValues) => {
+    if (isTurnstileConfigured && !captchaToken) {
+      toast({ title: 'Please complete the security check below', variant: 'error' });
+      return;
+    }
     const lastSubmit = Number(sessionStorage.getItem('last_inquiry_ts') || '0');
     if (Date.now() - lastSubmit < 15_000) {
       toast({ title: 'Please wait a moment before sending another inquiry', variant: 'error' });
@@ -152,6 +174,8 @@ export function InquiryPage() {
           </div>
 
           <Textarea label="Your Message" rows={4} {...register('message')} error={errors.message?.message} />
+
+          <TurnstileWidget onToken={setCaptchaToken} />
 
           <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
             Send Inquiry
