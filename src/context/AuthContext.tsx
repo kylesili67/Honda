@@ -85,14 +85,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!isSupabaseConfigured || !supabase) {
       try {
-        const savedId =
-          typeof window !== 'undefined' ? window.localStorage.getItem(DEMO_SESSION_KEY) : null;
-        if (savedId) {
-          const found = getDemoState().users.find((u) => u.id === savedId);
-          if (found && active) {
-            setUser({ id: found.id, email: found.email });
-            setProfile(found.profile);
-            setRoles(found.roles);
+        if (import.meta.env.PROD) {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(DEMO_SESSION_KEY);
+          }
+        } else {
+          const savedId =
+            typeof window !== 'undefined' ? window.localStorage.getItem(DEMO_SESSION_KEY) : null;
+          if (savedId) {
+            const found = getDemoState().users.find((u) => u.id === savedId);
+            if (found && active) {
+              setUser({ id: found.id, email: found.email });
+              setProfile(found.profile);
+              setRoles(found.roles);
+            }
           }
         }
       } finally {
@@ -149,6 +155,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     setAuthError(null);
     if (!isSupabaseConfigured || !supabase) {
+      if (import.meta.env.PROD) {
+        throw new Error('Demo sign-in is disabled in production. Configure Supabase authentication to enable accounts.');
+      }
       const found = getDemoState().users.find(
         (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
       );
@@ -175,6 +184,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }): Promise<{ needsEmailConfirmation: boolean }> => {
     setAuthError(null);
     if (!isSupabaseConfigured || !supabase) {
+      if (import.meta.env.PROD) {
+        throw new Error('Demo sign-up is disabled in production. Configure Supabase authentication to enable accounts.');
+      }
       const s = getDemoState();
       const exists = s.users.some((u) => u.email.toLowerCase() === input.email.trim().toLowerCase());
       if (exists) throw new Error('An account with this email already exists');
