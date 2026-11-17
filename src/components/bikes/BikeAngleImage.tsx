@@ -482,10 +482,30 @@ export function BikeAngleImage({
       onBlurCapture={handleBlurCapture}
     >
       <style>{`\n        @keyframes bikeTurntableY {\n          0% { transform: perspective(1100px) rotateY(-16deg) scale(0.96); }\n          25% { transform: perspective(1100px) rotateY(0deg) scale(1); }\n          50% { transform: perspective(1100px) rotateY(180deg) scale(0.96); }\n          75% { transform: perspective(1100px) rotateY(360deg) scale(1); }\n          100% { transform: perspective(1100px) rotateY(344deg) scale(0.96); }\n        }\n        .bike-turntable-y { animation: bikeTurntableY 9s ease-in-out infinite; transform-style: preserve-3d; backface-visibility: hidden; }\n        @media (prefers-reduced-motion: reduce) { .bike-turntable-y { animation: none !important; } }\n      `}</style>
-      {renderedFrames.map((frame) => {
+      {useSingleImageTurntable ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#18191D]">
+          {React.createElement('model-viewer' as React.ElementType, {
+            src: 'https://files.innerscene.com/library/road-motorcycle-f2519759/9dbc8024e2821e098070/motorcycle-original.glb',
+            alt: '3D road motorcycle rotating in the showroom',
+            'auto-rotate': true,
+            'auto-rotate-delay': '0',
+            'rotation-per-second': '18deg',
+            'camera-controls': true,
+            'disable-zoom': true,
+            'interaction-prompt': 'none',
+            'shadow-intensity': '1',
+            'exposure': '1',
+            'environment-image': 'neutral',
+            'camera-orbit': '35deg 72deg 3.2m',
+            'field-of-view': '30deg',
+            'loading': 'eager',
+            style: { width: '100%', height: '100%', backgroundColor: 'transparent', '--poster-color': 'transparent' } as React.CSSProperties,
+          })}
+          <span className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-black/50 px-2 py-1 text-[10px] font-semibold tracking-wider text-white/80">INTERACTIVE 3D · 360°</span>
+        </div>
+      ) : renderedFrames.map((frame) => {
         const isCurrent = activeFrame?.angle === frame.angle;
         const framingClass = 'object-center';
-
         return (
           <img
             key={`${frame.angle}-${frame.image.id}`}
@@ -497,9 +517,7 @@ export function BikeAngleImage({
             fetchPriority={priority && frame.angle === 'front' ? 'high' : undefined}
             referrerPolicy="no-referrer"
             onError={() => handleImageError(frame.image.id)}
-            className={`absolute inset-0 h-full w-full ${useSingleImageTurntable ? 'object-contain bike-turntable-y' : 'object-cover'} ${framingClass} ${
-              prefersReducedMotion ? 'transition-none' : 'transition-all duration-300 ease-in-out'
-            } ${shouldZoomOnHover ? 'group-hover:scale-[1.04]' : ''} ${
+            className={`absolute inset-0 h-full w-full object-cover ${framingClass} transition-all duration-300 ease-in-out ${
               isCurrent ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none z-0'
             } ${imgClassName}`}
           />
