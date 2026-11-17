@@ -484,7 +484,7 @@ export function BikeAngleImage({
       onFocusCapture={handleFocusCapture}
       onBlurCapture={handleBlurCapture}
     >
-      <style>{`\n        @keyframes cb150PremiumTurn {\n          0%, 100% { transform: perspective(1200px) rotateY(-9deg) scale(0.97) translateY(2px); }\n          50% { transform: perspective(1200px) rotateY(9deg) scale(1) translateY(-2px); }\n        }\n        .cb150-premium-turn { animation: cb150PremiumTurn 5.5s ease-in-out infinite; transform-style: preserve-3d; will-change: transform; }\n        @media (prefers-reduced-motion: reduce) { .cb150-premium-turn { animation: none !important; } }\n      `}</style>
+      <style>{`\n        @keyframes cb150FullSpin {\n          from { transform: perspective(1200px) rotateY(0deg); }\n          to { transform: perspective(1200px) rotateY(360deg); }\n        }\n        .cb150-premium-turn { animation: cb150FullSpin 8s linear infinite; transform-style: preserve-3d; will-change: transform; }\n        @media (prefers-reduced-motion: reduce) { .cb150-premium-turn { animation: none !important; } }\n      `}</style>
       {useSingleImageTurntable ? (
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_50%_55%,#30343b_0%,#18191d_68%)] px-5 py-8">
           <div className="pointer-events-none absolute inset-x-[12%] bottom-[16%] h-8 rounded-full bg-black/45 blur-xl" />
