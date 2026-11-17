@@ -41,13 +41,6 @@ const ASPECT_CLASS_MAP: Record<string, string> = {
   square: 'aspect-square',
 };
 
-const SAME_URL_ANGLE_FRAMING: Record<BikeViewAngle, string> = {
-  front: 'scale-100 object-center',
-  right: 'scale-[1.18] object-[82%_55%]',
-  back: 'scale-[1.24] object-[18%_45%]',
-  left: 'scale-x-[-1.12] scale-y-[1.12] object-center',
-};
-
 // Module-level coordinator ensures at most one bike card rotates at a time
 let currentActiveCardId: string | null = null;
 const activeStopListeners = new Map<string, () => void>();
@@ -195,14 +188,16 @@ export function BikeAngleImage({
     [images, colorId, fallbackSrc, alt, failedIds]
   );
 
-  const canRotate = interactive && frames.length > 1;
   const safeIndex = frames.length > 0 ? activeIndex % frames.length : 0;
   const activeFrame = frames[safeIndex];
 
+  // A real turntable needs a different photograph for each angle. Never fake
+  // front/right/back/left views by zooming or mirroring a single photograph.
   const allSameUrl = useMemo(
     () => frames.length > 1 && frames.every((frame) => frame.image.url === frames[0].image.url),
     [frames]
   );
+  const canRotate = interactive && frames.length > 1 && !allSameUrl;
 
   const availableAngles = useMemo(() => new Set(frames.map((f) => f.angle)), [frames]);
 
@@ -487,7 +482,7 @@ export function BikeAngleImage({
     >
       {renderedFrames.map((frame) => {
         const isCurrent = activeFrame?.angle === frame.angle;
-        const framingClass = allSameUrl ? SAME_URL_ANGLE_FRAMING[frame.angle] : 'object-center';
+        const framingClass = 'object-center';
 
         return (
           <img
@@ -543,6 +538,13 @@ export function BikeAngleImage({
           <RotateCw className={`h-3 w-3 ${isRotating && !prefersReducedMotion ? 'animate-spin' : ''}`} />
           <span>360°</span>
         </button>
+      )}
+
+      {/* Explain when sample data contains only one photo reused for every angle. */}
+      {autoRotate && allSameUrl && (
+        <div className="pointer-events-none absolute bottom-2.5 left-2.5 z-20 rounded-md bg-[#111214]/75 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/90 backdrop-blur-sm">
+          360° view needs multiple angle photos
+        </div>
       )}
 
       {/* Active Angle Label & 4-Dot Indicator */}
