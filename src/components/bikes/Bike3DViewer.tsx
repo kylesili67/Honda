@@ -120,6 +120,7 @@ export function Bike3DViewer({ alt, fallbackSrc }: Bike3DViewerProps) {
     let lastX = 0;
     let lastY = 0;
     let dragging = false;
+    let bikeGroup: any;
 
     const host = hostRef.current;
     if (!host) return;
@@ -143,10 +144,10 @@ export function Bike3DViewer({ alt, fallbackSrc }: Bike3DViewerProps) {
     };
     const onPointerUp = () => { pointerDown = false; };
 
-    let bikeGroup: any;
     const start = async () => {
       try {
         // Load Three.js as an external ES module so the showroom does not need a new build dependency.
+        // @ts-expect-error Three.js is fetched as a browser ES module at runtime.
         const THREE: ThreeModule = await import(/* @vite-ignore */ 'https://esm.sh/three@0.180.0');
         if (cancelled || !host) return;
 
