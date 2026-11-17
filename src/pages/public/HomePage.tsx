@@ -21,7 +21,7 @@ import { formatDateKarachi, formatPKR } from '../../lib/format';
 import { usePageMeta } from '../../lib/seo';
 import { listBikeCategories, listBikes } from '../../services/bikes';
 import { listBanners, listFaqs, listNewsPosts, listOffers } from '../../services/content';
-import { BikeAngleImage } from '../../components/bikes/BikeAngleImage';
+import { Bike3DViewer } from '../../components/bikes/Bike3DViewer';
 import { BikeFinderWizard } from '../../components/bikes/BikeFinderWizard';
 import { Accordion, Button, Modal, SafeImage, Skeleton } from '../../components/ui/Primitives';
 import { CountUpNumber, Reveal } from '../../components/ui/ScrollReveal';
@@ -204,15 +204,9 @@ export function HomePage() {
                 key={activeSlide.id}
                 className="group overflow-hidden rounded-2xl border border-white/10 bg-[#18191D] shadow-2xl"
               >
-                <BikeAngleImage
-                  images={activeSlide.images}
-                  fallbackSrc={MEDIA.heroShowroomBike}
+                <Bike3DViewer
                   alt={activeSlide.name}
-                  aspectRatio="16/10"
-                  priority
-                  className="bg-[#18191D]"
-                  enableGroupZoom={false}
-                  autoRotate
+                  fallbackSrc={MEDIA.heroShowroomBike}
                 />
               </div>
             </div>
