@@ -469,7 +469,7 @@ export function BikeAngleImage({
   const shouldZoomOnHover = enableGroupZoom && !isRotating && !isHolding && !isPinned;
   // Use Atlas Honda's official CB150F product photo in the homepage hero.
   // The generic placeholder 3D motorcycle must never be shown as a Honda model.
-  const isOfficialCb150Hero = autoRotate && /(?:cb\\s?150|150f|sport tourer 150)/i.test(alt);
+  const isOfficialCb150Hero = autoRotate && /(?:cb\s?150|150f|sport tourer 150)/i.test(alt);
   const useSingleImageTurntable = isOfficialCb150Hero && !prefersReducedMotion;
 
   return (
