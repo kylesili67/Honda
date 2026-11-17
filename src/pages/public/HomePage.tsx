@@ -212,6 +212,7 @@ export function HomePage() {
                   priority
                   className="bg-[#18191D]"
                   enableGroupZoom={false}
+                  autoRotate
                 />
               </div>
             </div>

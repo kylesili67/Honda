@@ -22,6 +22,7 @@ export interface BikeAngleImageProps {
   height?: number;
   interactive?: boolean;
   enableGroupZoom?: boolean;
+  autoRotate?: boolean;
 }
 
 const ANGLE_ORDER: BikeViewAngle[] = ['front', 'right', 'back', 'left'];
@@ -169,6 +170,7 @@ export function BikeAngleImage({
   height = 900,
   interactive = true,
   enableGroupZoom = true,
+  autoRotate = false,
 }: BikeAngleImageProps) {
   const instanceId = useId();
   const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
@@ -278,6 +280,23 @@ export function BikeAngleImage({
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
+
+  // Optional automatic angle cycling for the homepage hero showcase.
+  useEffect(() => {
+    if (!autoRotate || !canRotate || prefersReducedMotion) return;
+    preloadAllAngles();
+    hasInteractedRef.current = true;
+    setIsPinned(true);
+    setIsRotating(true);
+    const timer = window.setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % frames.length);
+    }, stepMs);
+    return () => {
+      window.clearInterval(timer);
+      setIsPinned(false);
+      setIsRotating(false);
+    };
+  }, [autoRotate, canRotate, prefersReducedMotion, preloadAllAngles, frames.length, stepMs]);
 
   // Register with global single-active-card coordinator & clean up timers on unmount
   useEffect(() => {
@@ -451,14 +470,14 @@ export function BikeAngleImage({
 
   // On initial load render ONLY the front frame; render remaining frames once interaction preloads them
   const renderedFrames = preloadArmed ? frames : [frames[0]];
-  const showOverlayBar = canRotate && (isRotating || isPinned || prefersReducedMotion);
+  const showOverlayBar = canRotate && (isRotating || isPinned || prefersReducedMotion || autoRotate);
   const shouldZoomOnHover = enableGroupZoom && !isRotating && !isHolding && !isPinned;
 
   return (
     <div
       className={`relative w-full overflow-hidden bg-[#F5F5F6] select-none ${aspectClass} ${className}`}
       onMouseEnter={scheduleHoverHold}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={autoRotate ? undefined : handleMouseLeave}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEndOrCancel}
@@ -506,7 +525,7 @@ export function BikeAngleImage({
       )}
 
       {/* Corner 360° Toggle Button (touch-safe, does not hijack card navigation) */}
-      {canRotate && (
+      {canRotate && !autoRotate && (
         <button
           type="button"
           aria-label="Rotate bike view"
