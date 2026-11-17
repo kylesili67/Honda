@@ -467,7 +467,10 @@ export function BikeAngleImage({
   const renderedFrames = preloadArmed ? frames : [frames[0]];
   const showOverlayBar = canRotate && (isRotating || isPinned || prefersReducedMotion || autoRotate);
   const shouldZoomOnHover = enableGroupZoom && !isRotating && !isHolding && !isPinned;
-  const useSingleImageTurntable = autoRotate && !canRotate && frames.length > 0 && !prefersReducedMotion;
+  // Use Atlas Honda's official CB150F product photo in the homepage hero.
+  // The generic placeholder 3D motorcycle must never be shown as a Honda model.
+  const isOfficialCb150Hero = autoRotate && /(?:cb\\s?150|150f|sport tourer 150)/i.test(alt);
+  const useSingleImageTurntable = isOfficialCb150Hero && !prefersReducedMotion;
 
   return (
     <div
@@ -481,27 +484,21 @@ export function BikeAngleImage({
       onFocusCapture={handleFocusCapture}
       onBlurCapture={handleBlurCapture}
     >
-      <style>{`\n        @keyframes bikeTurntableY {\n          0% { transform: perspective(1100px) rotateY(-16deg) scale(0.96); }\n          25% { transform: perspective(1100px) rotateY(0deg) scale(1); }\n          50% { transform: perspective(1100px) rotateY(180deg) scale(0.96); }\n          75% { transform: perspective(1100px) rotateY(360deg) scale(1); }\n          100% { transform: perspective(1100px) rotateY(344deg) scale(0.96); }\n        }\n        .bike-turntable-y { animation: bikeTurntableY 9s ease-in-out infinite; transform-style: preserve-3d; backface-visibility: hidden; }\n        @media (prefers-reduced-motion: reduce) { .bike-turntable-y { animation: none !important; } }\n      `}</style>
+      <style>{`\n        @keyframes cb150PremiumTurn {\n          0%, 100% { transform: perspective(1200px) rotateY(-9deg) scale(0.97) translateY(2px); }\n          50% { transform: perspective(1200px) rotateY(9deg) scale(1) translateY(-2px); }\n        }\n        .cb150-premium-turn { animation: cb150PremiumTurn 5.5s ease-in-out infinite; transform-style: preserve-3d; will-change: transform; }\n        @media (prefers-reduced-motion: reduce) { .cb150-premium-turn { animation: none !important; } }\n      `}</style>
       {useSingleImageTurntable ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#18191D]">
-          {React.createElement('model-viewer' as React.ElementType, {
-            src: 'https://files.innerscene.com/library/road-motorcycle-f2519759/9dbc8024e2821e098070/motorcycle-original.glb',
-            alt: '3D road motorcycle rotating in the showroom',
-            'auto-rotate': true,
-            'auto-rotate-delay': '0',
-            'rotation-per-second': '18deg',
-            'camera-controls': true,
-            'disable-zoom': true,
-            'interaction-prompt': 'none',
-            'shadow-intensity': '1',
-            'exposure': '1',
-            'environment-image': 'neutral',
-            'camera-orbit': '35deg 72deg 3.2m',
-            'field-of-view': '30deg',
-            'loading': 'eager',
-            style: { width: '100%', height: '100%', backgroundColor: 'transparent', '--poster-color': 'transparent' } as React.CSSProperties,
-          })}
-          <span className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-black/50 px-2 py-1 text-[10px] font-semibold tracking-wider text-white/80">INTERACTIVE 3D · 360°</span>
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[radial-gradient(ellipse_at_50%_55%,#30343b_0%,#18191d_68%)] px-5 py-8">
+          <div className="pointer-events-none absolute inset-x-[12%] bottom-[16%] h-8 rounded-full bg-black/45 blur-xl" />
+          <img
+            src="https://www.atlashonda.com.pk/wp-content/uploads/2021/04/CB150F-blue-1.webp"
+            alt="Official Atlas Honda CB150F blue motorcycle"
+            loading="eager"
+            fetchPriority="high"
+            referrerPolicy="no-referrer"
+            className="cb150-premium-turn relative z-[1] h-full w-full object-contain drop-shadow-[0_24px_28px_rgba(0,0,0,0.55)]"
+          />
+          <span className="pointer-events-none absolute bottom-3 left-3 z-[2] rounded-md border border-white/15 bg-black/45 px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.16em] text-white/85 backdrop-blur-sm">
+            ATLAS HONDA · CB150F
+          </span>
         </div>
       ) : renderedFrames.map((frame) => {
         const isCurrent = activeFrame?.angle === frame.angle;
