@@ -191,8 +191,8 @@ export function BikeAngleImage({
   const safeIndex = frames.length > 0 ? activeIndex % frames.length : 0;
   const activeFrame = frames[safeIndex];
 
-  // A real turntable needs a different photograph for each angle. Never fake
-  // front/right/back/left views by zooming or mirroring a single photograph.
+  // Use real angle photos when available. For the homepage's single-photo fallback,
+  // apply a subtle upright Y-axis turntable animation rather than leaving the bike static.
   const allSameUrl = useMemo(
     () => frames.length > 1 && frames.every((frame) => frame.image.url === frames[0].image.url),
     [frames]
@@ -467,6 +467,7 @@ export function BikeAngleImage({
   const renderedFrames = preloadArmed ? frames : [frames[0]];
   const showOverlayBar = canRotate && (isRotating || isPinned || prefersReducedMotion || autoRotate);
   const shouldZoomOnHover = enableGroupZoom && !isRotating && !isHolding && !isPinned;
+  const useSingleImageTurntable = autoRotate && !canRotate && frames.length > 0 && !prefersReducedMotion;
 
   return (
     <div
@@ -480,6 +481,7 @@ export function BikeAngleImage({
       onFocusCapture={handleFocusCapture}
       onBlurCapture={handleBlurCapture}
     >
+      <style>{`\n        @keyframes bikeTurntableY {\n          0% { transform: perspective(1100px) rotateY(-16deg) scale(0.96); }\n          25% { transform: perspective(1100px) rotateY(0deg) scale(1); }\n          50% { transform: perspective(1100px) rotateY(180deg) scale(0.96); }\n          75% { transform: perspective(1100px) rotateY(360deg) scale(1); }\n          100% { transform: perspective(1100px) rotateY(344deg) scale(0.96); }\n        }\n        .bike-turntable-y { animation: bikeTurntableY 9s ease-in-out infinite; transform-style: preserve-3d; backface-visibility: hidden; }\n        @media (prefers-reduced-motion: reduce) { .bike-turntable-y { animation: none !important; } }\n      `}</style>
       {renderedFrames.map((frame) => {
         const isCurrent = activeFrame?.angle === frame.angle;
         const framingClass = 'object-center';
@@ -495,7 +497,7 @@ export function BikeAngleImage({
             fetchPriority={priority && frame.angle === 'front' ? 'high' : undefined}
             referrerPolicy="no-referrer"
             onError={() => handleImageError(frame.image.id)}
-            className={`absolute inset-0 h-full w-full object-cover ${framingClass} ${
+            className={`absolute inset-0 h-full w-full ${useSingleImageTurntable ? 'object-contain bike-turntable-y' : 'object-cover'} ${framingClass} ${
               prefersReducedMotion ? 'transition-none' : 'transition-all duration-300 ease-in-out'
             } ${shouldZoomOnHover ? 'group-hover:scale-[1.04]' : ''} ${
               isCurrent ? 'opacity-100 z-[1]' : 'opacity-0 pointer-events-none z-0'
@@ -538,13 +540,6 @@ export function BikeAngleImage({
           <RotateCw className={`h-3 w-3 ${isRotating && !prefersReducedMotion ? 'animate-spin' : ''}`} />
           <span>360°</span>
         </button>
-      )}
-
-      {/* Explain when sample data contains only one photo reused for every angle. */}
-      {autoRotate && allSameUrl && (
-        <div className="pointer-events-none absolute bottom-2.5 left-2.5 z-20 rounded-md bg-[#111214]/75 px-2 py-1 text-[10px] font-semibold tracking-wide text-white/90 backdrop-blur-sm">
-          360° view needs multiple angle photos
-        </div>
       )}
 
       {/* Active Angle Label & 4-Dot Indicator */}
