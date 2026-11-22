@@ -4,7 +4,7 @@ import { AccountLayout } from './components/layout/AccountLayout';
 import { AdminLayout } from './components/layout/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
 import { RequireAuth, RequireStaff } from './components/auth/RouteGuards';
-import { Skeleton } from './components/ui/Primitives';
+import { WheelSpokeLoader } from './components/ui/NightRideMotifs';
 
 const HomePage = lazy(() => import('./pages/public/HomePage').then((m) => ({ default: m.HomePage })));
 const BikesCatalogPage = lazy(() =>
@@ -221,9 +221,8 @@ const AdminAuditLogPage = lazy(() =>
 
 function RouteFallback() {
   return (
-    <div className="mx-auto max-w-[1140px] px-4 sm:px-6 py-10 space-y-6">
-      <Skeleton className="h-10 w-64" />
-      <Skeleton className="h-64 w-full" />
+    <div className="mx-auto max-w-[1140px] px-4 sm:px-6 py-10">
+      <WheelSpokeLoader label="Loading showroom..." />
     </div>
   );
 }

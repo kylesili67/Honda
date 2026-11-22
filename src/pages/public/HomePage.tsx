@@ -22,10 +22,11 @@ import { usePageMeta } from '../../lib/seo';
 import { listBikeCategories, listBikes } from '../../services/bikes';
 import { listBanners, listFaqs, listNewsPosts, listOffers } from '../../services/content';
 import { BikeAngleImage } from '../../components/bikes/BikeAngleImage';
-import { Bike3DViewer } from '../../components/bikes/Bike3DViewer';
+import { Bike3DShowcase } from '../../components/bikes/Bike3DShowcase';
 import { BikeFinderWizard } from '../../components/bikes/BikeFinderWizard';
 import { Accordion, Button, Modal, SafeImage, Skeleton } from '../../components/ui/Primitives';
 import { CountUpNumber, Reveal } from '../../components/ui/ScrollReveal';
+import { RoadLineSeparator, SpeedometerArcDivider } from '../../components/ui/NightRideMotifs';
 
 export function HomePage() {
   const { settings } = useSettings();
@@ -60,6 +61,7 @@ export function HomePage() {
 
   const [heroIdx, setHeroIdx] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
+  const [heroColorBySlide, setHeroColorBySlide] = useState<Record<string, string>>({});
   const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
@@ -77,6 +79,14 @@ export function HomePage() {
 
   const safeHeroIdx = heroSlides.length > 0 ? heroIdx % heroSlides.length : 0;
   const activeSlide = heroSlides[safeHeroIdx];
+  const activeHeroColorId = activeSlide
+    ? heroColorBySlide[activeSlide.id] ?? activeSlide.colors?.[0]?.id ?? null
+    : null;
+  const activeHeroColor = activeSlide?.colors?.find((c) => c.id === activeHeroColorId) ?? activeSlide?.colors?.[0];
+  const heroMode = settings.hero_mode ?? 'auto';
+  const hero360Enabled = settings.hero_360_enabled ?? true;
+  const hero360SecondsPerTurn = settings.hero_360_seconds_per_turn ?? 14;
+  const heroEffectsEnabled = settings.hero_effects_enabled ?? true;
 
   // Bikes sorted by starting ex-showroom price ascending for Section 2 carousel
   const sortedBikes = useMemo(() => {
@@ -146,10 +156,10 @@ export function HomePage() {
           }
           touchStartX.current = null;
         }}
-        className="relative overflow-hidden text-white transition-colors duration-500"
+        className="night-ride-grain speed-cut-bottom relative overflow-hidden text-white transition-colors duration-500 pb-6"
         style={{
-          background: activeSlide?.colors?.[0]?.hex_code
-            ? `linear-gradient(125deg, #111214 0%, #1C1E22 52%, ${activeSlide.colors[0].hex_code}55 100%)`
+          background: activeHeroColor?.hex_code
+            ? `linear-gradient(125deg, #111214 0%, #1C1E22 52%, ${activeHeroColor.hex_code}55 100%)`
             : 'linear-gradient(125deg, #111214 0%, #26282C 100%)',
         }}
       >
@@ -158,17 +168,19 @@ export function HomePage() {
             <Skeleton className="h-[420px] w-full bg-white/10" />
           </div>
         ) : activeSlide ? (
-          <div className="mx-auto max-w-[1280px] grid grid-cols-1 lg:grid-cols-12 items-center min-h-[500px] lg:min-h-[560px] px-4 sm:px-6 py-12 lg:py-16 gap-8">
-            <div className="lg:col-span-6 z-10 space-y-4">
+          <div className="mx-auto max-w-[1280px] grid grid-cols-1 lg:grid-cols-12 items-center min-h-[500px] lg:min-h-[560px] px-4 sm:px-6 py-10 lg:py-16 gap-8">
+            <div className="order-2 lg:order-1 lg:col-span-5 z-10 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/75">
                 {activeSlide.category?.name ?? 'Showroom'} · {activeSlide.engine_cc} cc
               </p>
 
-              <h1 className="font-display text-[clamp(2.5rem,5vw,4.25rem)] font-bold uppercase leading-[0.98] tracking-tight text-balance">
-                {activeSlide.name}
-              </h1>
+              <div key={activeSlide.id} className="overflow-hidden">
+                <h1 className="hero-mask-reveal font-display text-[clamp(2.5rem,5vw,4.25rem)] font-bold uppercase leading-[0.98] tracking-wide text-balance">
+                  {activeSlide.name}
+                </h1>
+              </div>
 
-              <p className="font-display text-2xl sm:text-3xl font-bold text-[#D71920] tabular-nums">
+              <p className="hero-price-glow font-display text-2xl sm:text-3xl font-bold text-[#D71920] tabular-nums">
                 From {formatPKR(getMinPrice(activeSlide))}
               </p>
 
@@ -176,6 +188,43 @@ export function HomePage() {
                 <p className="max-w-lg text-sm sm:text-base text-white/80 leading-relaxed">
                   {activeSlide.tagline}
                 </p>
+              )}
+
+              {/* Color Swatches */}
+              {activeSlide.colors && activeSlide.colors.length > 0 && (
+                <div className="pt-1 flex flex-wrap items-center gap-2.5">
+                  <span className="text-xs font-medium uppercase tracking-wider text-white/60">
+                    Color:
+                  </span>
+                  <div className="flex items-center gap-2" role="radiogroup" aria-label="Select motorcycle color">
+                    {activeSlide.colors.map((color) => {
+                      const selected = color.id === activeHeroColor?.id;
+                      return (
+                        <button
+                          key={color.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          aria-label={`Color ${color.name}`}
+                          title={color.name}
+                          onClick={() =>
+                            setHeroColorBySlide((prev) => ({
+                              ...prev,
+                              [activeSlide.id]: color.id,
+                            }))
+                          }
+                          className={`h-7 w-7 rounded-full border-2 transition-transform cursor-pointer ${
+                            selected ? 'border-white scale-110 ring-2 ring-[#D71920]' : 'border-white/35 hover:scale-105'
+                          }`}
+                          style={{ backgroundColor: color.hex_code }}
+                        />
+                      );
+                    })}
+                  </div>
+                  {activeHeroColor?.name && (
+                    <span className="text-xs text-white/80">{activeHeroColor.name}</span>
+                  )}
+                </div>
               )}
 
               <div className="pt-3 flex flex-wrap items-center gap-3">
@@ -188,26 +237,49 @@ export function HomePage() {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link to={`/book/${activeSlide.slug}`}>
+                <Link to={`/book/${activeSlide.slug}?color=${activeHeroColor?.id ?? ''}`}>
+                  <Button
+                    size="lg"
+                    variant="outline-dark"
+                    className="cta-book-pulse min-h-[48px]"
+                  >
+                    Book Now
+                  </Button>
+                </Link>
+                <Link to={`/test-ride?bike=${activeSlide.slug}`}>
                   <Button
                     size="lg"
                     variant="outline-dark"
                     className="min-h-[48px]"
                   >
-                    Book Now
+                    Test Ride
                   </Button>
                 </Link>
               </div>
             </div>
 
-            <div className="lg:col-span-6 relative">
+            <div
+              className="order-1 lg:order-2 lg:col-span-7 relative z-10"
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
               <div
                 key={activeSlide.id}
-                className="group overflow-hidden rounded-2xl border border-white/10 bg-[#18191D] shadow-2xl"
+                className="overflow-hidden rounded-2xl border border-white/10 bg-[#18191D] shadow-2xl"
               >
-                <Bike3DViewer
-                  alt={activeSlide.name}
+                <Bike3DShowcase
+                  bike={activeSlide}
+                  colorId={activeHeroColorId}
+                  activeColorHex={activeHeroColor?.hex_code ?? null}
+                  showColorSwatches={false}
                   fallbackSrc={MEDIA.heroShowroomBike}
+                  brandWordmark={settings.brand_name || 'HONDA'}
+                  heroMode={heroMode}
+                  autoRotate={hero360Enabled}
+                  secondsPerTurn={hero360SecondsPerTurn}
+                  effectsEnabled={heroEffectsEnabled}
+                  priority
+                  isActive
                 />
               </div>
             </div>
@@ -256,14 +328,15 @@ export function HomePage() {
       </section>
 
       {/* 2. Bike Range Strip / Horizontal Carousel (Sorted by Price) */}
+      <SpeedometerArcDivider className="pt-4" />
       <Reveal>
-        <section className="mx-auto max-w-[1280px] px-4 sm:px-6 py-14 sm:py-18">
+        <section className="mx-auto max-w-[1280px] px-4 sm:px-6 py-12 sm:py-16">
           <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[#D71920]">
                 Complete Lineup
               </p>
-              <h2 className="mt-1 font-display text-3xl sm:text-4xl font-bold text-[#111214]">
+              <h2 className="gauge-underline mt-1 font-display text-3xl sm:text-4xl font-bold text-[#111214]">
                 Motorcycle Range
               </h2>
               <p className="mt-1 text-sm text-[#6B7078]">
@@ -617,13 +690,14 @@ export function HomePage() {
       {/* 9. News & Updates Carousel */}
       {newsPosts.length > 0 && (
         <Reveal>
-          <section id="news" className="mx-auto max-w-[1280px] px-4 sm:px-6 py-14 sm:py-18">
+          <RoadLineSeparator className="pt-10" />
+          <section id="news" className="mx-auto max-w-[1280px] px-4 sm:px-6 py-12 sm:py-16">
             <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-[#D71920]">
                   Showroom Journal
                 </p>
-                <h2 className="mt-1 font-display text-3xl sm:text-4xl font-bold text-[#111214]">
+                <h2 className="gauge-underline mt-1 font-display text-3xl sm:text-4xl font-bold text-[#111214]">
                   News &amp; Updates
                 </h2>
               </div>
@@ -712,39 +786,39 @@ export function HomePage() {
 
       {/* 10. Why Us / Trust Strip with Count-Up Numbers */}
       <Reveal>
-        <section className="bg-[#26282C] text-white border-y border-[#111214]">
-          <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-14">
+        <section className="night-ride-grain bg-[#18191D] text-white border-y border-[#111214]">
+          <div className="relative z-10 mx-auto max-w-[1280px] px-4 sm:px-6 py-14">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-2">
+              <div className="glass-dark-card rounded-xl p-6 space-y-2">
                 <ShieldCheck className="h-6 w-6 text-[#D71920]" />
-                <p className="font-display text-3xl font-bold">
+                <p className="font-display text-3xl font-bold tabular-nums">
                   <CountUpNumber target={100} suffix="%" />
                 </p>
                 <h3 className="text-sm font-semibold">Genuine Spare Parts</h3>
                 <p className="text-xs text-white/70">Model-matched consumables, helmets, and showroom parts.</p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-2">
+              <div className="glass-dark-card rounded-xl p-6 space-y-2">
                 <Calculator className="h-6 w-6 text-[#D71920]" />
-                <p className="font-display text-3xl font-bold">
+                <p className="font-display text-3xl font-bold tabular-nums">
                   <CountUpNumber target={36} suffix=" Mo" />
                 </p>
                 <h3 className="text-sm font-semibold">Easy Installments</h3>
                 <p className="text-xs text-white/70">Up to 36-month indicative EMI planning across variants.</p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-2">
+              <div className="glass-dark-card rounded-xl p-6 space-y-2">
                 <Compass className="h-6 w-6 text-[#D71920]" />
-                <p className="font-display text-3xl font-bold">
+                <p className="font-display text-3xl font-bold tabular-nums">
                   <CountUpNumber target={15} suffix=" Min" />
                 </p>
                 <h3 className="text-sm font-semibold">Free Test Ride</h3>
                 <p className="text-xs text-white/70">Dedicated branch slots to ride before reserving a token.</p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-2">
+              <div className="glass-dark-card rounded-xl p-6 space-y-2">
                 <Wrench className="h-6 w-6 text-[#D71920]" />
-                <p className="font-display text-3xl font-bold">
+                <p className="font-display text-3xl font-bold tabular-nums">
                   <CountUpNumber target={50000} suffix="+" />
                 </p>
                 <h3 className="text-sm font-semibold">Trusted Service Bays</h3>

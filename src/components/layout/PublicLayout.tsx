@@ -26,6 +26,7 @@ import { listAccessories } from '../../services/accessories';
 import { listBikeCategories, listBikes } from '../../services/bikes';
 import { Button, SafeImage } from '../ui/Primitives';
 import { Logo } from '../brand/Logo';
+import { FooterRoadStrip, ScrollProgressBar } from '../ui/NightRideMotifs';
 
 function TikTokIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
@@ -175,6 +176,7 @@ export function PublicLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-[#111214] overflow-x-clip">
+      <ScrollProgressBar />
       {!isSupabaseConfigured && !bannerDismissed && (
         <div className="bg-[#26282C] text-white text-xs px-4 py-2 flex items-center justify-between gap-4">
           <p className="truncate">
@@ -416,7 +418,7 @@ export function PublicLayout() {
               to="/"
               end
               className={({ isActive }) =>
-                `text-sm font-medium whitespace-nowrap transition-colors ${
+                `nav-link-underline text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive ? 'text-[#D71920]' : 'text-[#26282C] hover:text-[#111214]'
                 }`
               }
@@ -430,7 +432,7 @@ export function PublicLayout() {
               aria-controls="products-mega-menu"
               onMouseEnter={openMegaMenu}
               onClick={() => setMegaMenuOpen((v) => !v)}
-              className={`inline-flex items-center gap-1 text-sm font-medium whitespace-nowrap transition-colors cursor-pointer py-2 ${
+              className={`nav-link-underline inline-flex items-center gap-1 text-sm font-medium whitespace-nowrap transition-colors cursor-pointer py-2 ${
                 megaMenuOpen || location.pathname.startsWith('/bikes') || location.pathname.startsWith('/accessories')
                   ? 'text-[#D71920]'
                   : 'text-[#26282C] hover:text-[#111214]'
@@ -443,7 +445,7 @@ export function PublicLayout() {
             <NavLink
               to="/service-booking"
               className={({ isActive }) =>
-                `text-sm font-medium whitespace-nowrap transition-colors ${
+                `nav-link-underline text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive ? 'text-[#D71920]' : 'text-[#26282C] hover:text-[#111214]'
                 }`
               }
@@ -454,7 +456,7 @@ export function PublicLayout() {
             <NavLink
               to="/branches"
               className={({ isActive }) =>
-                `text-sm font-medium whitespace-nowrap transition-colors ${
+                `nav-link-underline text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive ? 'text-[#D71920]' : 'text-[#26282C] hover:text-[#111214]'
                 }`
               }
@@ -465,7 +467,7 @@ export function PublicLayout() {
             <NavLink
               to="/emi-calculator"
               className={({ isActive }) =>
-                `text-sm font-medium whitespace-nowrap transition-colors ${
+                `nav-link-underline text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive ? 'text-[#D71920]' : 'text-[#26282C] hover:text-[#111214]'
                 }`
               }
@@ -476,7 +478,7 @@ export function PublicLayout() {
             <NavLink
               to="/contact"
               className={({ isActive }) =>
-                `text-sm font-medium whitespace-nowrap transition-colors ${
+                `nav-link-underline text-sm font-medium whitespace-nowrap transition-colors ${
                   isActive ? 'text-[#D71920]' : 'text-[#26282C] hover:text-[#111214]'
                 }`
               }
@@ -909,7 +911,9 @@ export function PublicLayout() {
       )}
 
       <main className="flex-1">
-        <Outlet />
+        <div key={location.pathname} className="page-transition-enter">
+          <Outlet />
+        </div>
       </main>
 
       {/* Sticky Compare Tray when bikes are queued */}
@@ -1098,6 +1102,8 @@ export function PublicLayout() {
             </ul>
           </div>
         </div>
+
+        <FooterRoadStrip />
 
         <div className="border-t border-[#26282C] bg-[#0B0C0E]">
           <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-[#E3E4E7]/65">

@@ -2,6 +2,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 export type StorageBucket =
   | 'bike-images'
+  | 'bike-models'
   | 'accessory-images'
   | 'content-images'
   | 'trade-in-photos'
@@ -64,6 +65,48 @@ export async function uploadFileToBucket(
   }
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(safePath);
+  return { path: safePath, url: data.publicUrl };
+}
+
+const MAX_MODEL_3D_BYTES = 15 * 1024 * 1024; // 15 MB
+
+export async function uploadModel3DFile(
+  folderPrefix: string,
+  file: File
+): Promise<{ path: string; url: string }> {
+  if (file.size > MAX_MODEL_3D_BYTES) {
+    throw new Error('3D model exceeds maximum allowed size of 15 MB. Please compress with Draco.');
+  }
+
+  const lowerName = file.name.toLowerCase();
+  const isGlbExt = lowerName.endsWith('.glb');
+  const isGlbMime =
+    file.type === 'model/gltf-binary' ||
+    file.type === 'application/octet-stream' ||
+    file.type === '';
+
+  if (!isGlbExt || !isGlbMime) {
+    throw new Error('Only .glb (model/gltf-binary) 3D model files are supported');
+  }
+
+  const safePrefix = folderPrefix.replace(/^\/+|\/+$/g, '') || 'models';
+  const safePath = `${safePrefix}/${crypto.randomUUID()}.glb`;
+
+  if (!isSupabaseConfigured || !supabase) {
+    const objectUrl = URL.createObjectURL(file);
+    const fullDemoPath = `bike-models/${safePath}`;
+    demoPreviewUrls.set(fullDemoPath, objectUrl);
+    return { path: fullDemoPath, url: objectUrl };
+  }
+
+  const { error } = await supabase.storage.from('bike-models').upload(safePath, file, {
+    cacheControl: '3600',
+    contentType: 'model/gltf-binary',
+    upsert: false,
+  });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from('bike-models').getPublicUrl(safePath);
   return { path: safePath, url: data.publicUrl };
 }
 

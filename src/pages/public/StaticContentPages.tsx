@@ -265,17 +265,45 @@ export function NotFoundPage() {
       <div className="mb-6 flex justify-center">
         <Logo variant="full" height={40} />
       </div>
-      <p className="text-xs font-semibold uppercase tracking-widest text-[#D71920]">404</p>
-      <h1 className="mt-2 font-display text-4xl font-bold text-[#111214]">Page Not Found</h1>
-      <p className="mt-2 text-sm text-[#6B7078]">
-        The route you requested does not exist on this showroom site.
+
+      {/* Wrong Turn Road/Turn SVG Graphic */}
+      <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl border border-[#E3E4E7] bg-[#111214] text-white shadow-lg">
+        <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" className="h-14 w-14">
+          <path
+            d="M16 50 V30 C16 20 24 14 34 14 H48"
+            stroke="#FFFFFF"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeDasharray="6 6"
+          />
+          <path
+            d="M42 8 L50 14 L42 20"
+            stroke="#D71920"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="16" cy="50" r="4" fill="#D71920" />
+        </svg>
+      </div>
+
+      <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#D71920]">
+        Error 404 · Wrong Turn
       </p>
-      <div className="mt-6 flex justify-center gap-3">
+      <h1 className="mt-2 font-display text-4xl sm:text-5xl font-bold uppercase text-[#111214]">
+        Looks Like a Detour
+      </h1>
+      <p className="mt-3 text-sm text-[#6B7078] max-w-md mx-auto">
+        The road you followed doesn&apos;t lead to a showroom page. Head back to the main floor or explore our full motorcycle lineup.
+      </p>
+      <div className="mt-7 flex flex-wrap justify-center gap-3">
         <Link to="/">
-          <Button>Back to Home</Button>
+          <Button size="lg">Back to Showroom</Button>
         </Link>
         <Link to="/bikes">
-          <Button variant="outline">Browse Bikes</Button>
+          <Button size="lg" variant="outline">
+            Browse Motorcycles
+          </Button>
         </Link>
       </div>
     </div>

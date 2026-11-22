@@ -17,6 +17,12 @@ function loadInitial(): DemoStoreState {
     if (raw) {
       const parsed = JSON.parse(raw) as DemoStoreState;
       if (!parsed.newsPosts) parsed.newsPosts = structuredClone(SAMPLE_NEWS_POSTS);
+      if (parsed.settings) {
+        if (parsed.settings.hero_mode === undefined) parsed.settings.hero_mode = 'auto';
+        if (parsed.settings.hero_360_enabled === undefined) parsed.settings.hero_360_enabled = true;
+        if (parsed.settings.hero_360_seconds_per_turn === undefined) parsed.settings.hero_360_seconds_per_turn = 14;
+        if (parsed.settings.hero_effects_enabled === undefined) parsed.settings.hero_effects_enabled = true;
+      }
       if (!parsed.staticPages.some((p) => p.slug === 'disclaimer')) {
         const disc = SAMPLE_STATIC_PAGES.find((p) => p.slug === 'disclaimer');
         if (disc) parsed.staticPages.push(disc);

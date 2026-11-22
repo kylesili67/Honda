@@ -24,7 +24,7 @@ import {
   updateBikeStockRow,
 } from '../../services/bikes';
 import { listBranches } from '../../services/content';
-import { uploadFileToBucket } from '../../services/storage';
+import { uploadFileToBucket, uploadModel3DFile } from '../../services/storage';
 import type {
   AccessoryImage,
   AccessoryVariant,
@@ -36,6 +36,8 @@ import type {
   PublishStatus,
 } from '../../types/database';
 import { Button, Card, FileUploader, Input, Modal, SafeImage, Select, StatusChip, Textarea } from '../../components/ui/Primitives';
+import { Bike360Viewer } from '../../components/bikes/Bike360Viewer';
+import { Bike3DShowcase } from '../../components/bikes/Bike3DShowcase';
 
 function formatExtraSpecs(specs: Array<{ label: string; value: string }>): string {
   return (specs ?? []).map((s) => `${s.label}: ${s.value}`).join('\n');
@@ -158,8 +160,15 @@ export function AdminBikeEditorPage() {
   const [images, setImages] = useState<Array<Omit<BikeImage, 'model_id'>>>([]);
   const [stock, setStock] = useState<BikeStock[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingSpin, setUploadingSpin] = useState(false);
+  const [spinColorId, setSpinColorId] = useState('');
+  const [deleteSpinConfirmOpen, setDeleteSpinConfirmOpen] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
   const [draggedImageId, setDraggedImageId] = useState<string | null>(null);
+  const [model3dUrl, setModel3dUrl] = useState('');
+  const [model3dPosterUrl, setModel3dPosterUrl] = useState('');
+  const [uploadingModel3d, setUploadingModel3d] = useState(false);
+  const [removeModel3dOpen, setRemoveModel3dOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -178,6 +187,8 @@ export function AdminBikeEditorPage() {
       setColors(existing.colors ?? []);
       setImages(existing.images ?? []);
       setStock(existing.stock ?? []);
+      setModel3dUrl(existing.model_3d_url || '');
+      setModel3dPosterUrl(existing.model_3d_poster_url || '');
     } else if (isNew && categories.length > 0 && variants.length === 0) {
       setCategoryId(categories[0].id);
       const varId = crypto.randomUUID();
@@ -239,6 +250,8 @@ export function AdminBikeEditorPage() {
           is_featured: isFeatured,
           seo_title: `${name} Price & Specs`,
           seo_description: tagline || null,
+          model_3d_url: model3dUrl.trim() || null,
+          model_3d_poster_url: model3dPosterUrl.trim() || null,
           variants,
           colors,
           images,
@@ -624,11 +637,142 @@ export function AdminBikeEditorPage() {
         </div>
       </Card>
 
+      {/* 3D Model (.glb) Card */}
+      <Card className="p-6 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-[#111214]">3D Model (.glb) — Real 3D Hero Showroom</h2>
+            <p className="text-xs text-[#6B7078]">
+              Upload a compressed <code className="font-mono">.glb</code> (glTF binary, Draco-compressed recommended, ≤ 15 MB) or paste a public URL. When set, the Homepage Hero automatically uses the real 3D viewer first and falls back silently if unavailable.
+            </p>
+          </div>
+          {canWrite && model3dUrl.trim() && (
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              onClick={() => setRemoveModel3dOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove Model
+            </Button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+          <Input
+            label="3D Model URL (.glb)"
+            disabled={!canWrite}
+            placeholder="https://.../bike-model.glb"
+            value={model3dUrl}
+            onChange={(e) => setModel3dUrl(e.target.value)}
+          />
+          <Input
+            label="Optional Poster Image URL (shown while 3D loads)"
+            disabled={!canWrite}
+            placeholder="Leave blank to use primary bike photo"
+            value={model3dPosterUrl}
+            onChange={(e) => setModel3dPosterUrl(e.target.value)}
+          />
+        </div>
+
+        {canWrite && (
+          <div>
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[#E3E4E7] bg-[#F5F5F6] px-4 py-2.5 text-xs font-semibold text-[#111214] hover:bg-[#E3E4E7]/60 cursor-pointer transition-colors">
+              <input
+                type="file"
+                accept=".glb,model/gltf-binary"
+                disabled={uploadingModel3d}
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  setUploadingModel3d(true);
+                  try {
+                    const uploaded = await uploadModel3DFile(slug || 'model', file);
+                    setModel3dUrl(uploaded.url);
+                    toast({ title: '3D model (.glb) uploaded', variant: 'success' });
+                  } catch (err) {
+                    toast({
+                      title: '3D upload failed',
+                      description: err instanceof Error ? err.message : 'Unable to upload .glb file',
+                      variant: 'error',
+                    });
+                  } finally {
+                    setUploadingModel3d(false);
+                  }
+                }}
+              />
+              {uploadingModel3d ? 'Uploading .glb...' : 'Upload .glb File (≤ 15 MB)'}
+            </label>
+          </div>
+        )}
+
+        {model3dUrl.trim() && (
+          <div className="rounded-xl overflow-hidden border border-[#E3E4E7] bg-[#18191D]">
+            <Bike3DShowcase
+              bike={{
+                id: id || 'preview',
+                slug: slug || 'preview',
+                name: name || 'Preview Bike',
+                category_id: categoryId,
+                tagline: tagline || null,
+                description: description || null,
+                engine_cc: Number(engineCc) || 125,
+                is_featured: isFeatured,
+                status,
+                seo_title: null,
+                seo_description: null,
+                model_3d_url: model3dUrl.trim(),
+                model_3d_poster_url: model3dPosterUrl.trim() || null,
+                created_at: '',
+                updated_at: '',
+                images: images.map((i) => ({ ...i, model_id: id || 'preview' })),
+              }}
+              heroMode="model"
+              autoRotate
+              isActive
+            />
+          </div>
+        )}
+
+        <Modal
+          open={removeModel3dOpen}
+          onClose={() => setRemoveModel3dOpen(false)}
+          title="Remove 3D Model?"
+        >
+          <p className="text-sm text-[#6B7078]">
+            This will clear the 3D model URL for this motorcycle. Save the model to persist the change.
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setRemoveModel3dOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setModel3dUrl('');
+                setModel3dPosterUrl('');
+                setRemoveModel3dOpen(false);
+                toast({ title: '3D model removed — remember to save', variant: 'info' });
+              }}
+            >
+              Remove Model
+            </Button>
+          </div>
+        </Modal>
+      </Card>
+
       <Card className="p-6 space-y-5">
         <div className="space-y-1">
           <h2 className="text-base font-semibold text-[#111214]">Bike Gallery Images &amp; 360° Angles</h2>
           <p className="text-xs text-[#6B7078]">
             Recommended: upload identical aspect-ratio photos (e.g. 1200×800 WebP, PNG, or JPG, ≤ 5 MB) with a clean, consistent studio or transparent background for smooth Front → Right → Back → Left rotation. Drag cards or use arrows to reorder.
+          </p>
+          <p className="text-xs font-medium text-[#D71920]">
+            Best result ke liye transparent PNG/WebP use karein (Remove BG) — Hero Pseudo-3D showcase ke saath seamlessly blend hota hai.
           </p>
         </div>
         {canWrite && (
@@ -738,6 +882,7 @@ export function AdminBikeEditorPage() {
             });
           };
 
+          const galleryImages = images.filter((img) => img.image_type !== 'spin');
           const colorIdsInColors = new Set(colors.map((c) => c.id));
           const groups: Array<{
             key: string;
@@ -749,11 +894,11 @@ export function AdminBikeEditorPage() {
               key: c.id,
               label: c.name,
               hex: c.hex_code,
-              items: images.filter((img) => img.color_id === c.id),
+              items: galleryImages.filter((img) => img.color_id === c.id),
             })),
           ];
 
-          const unassignedOrOther = images.filter((img) => !img.color_id || !colorIdsInColors.has(img.color_id));
+          const unassignedOrOther = galleryImages.filter((img) => !img.color_id || !colorIdsInColors.has(img.color_id));
           if (unassignedOrOther.length > 0) {
             groups.push({
               key: '__all__',
@@ -933,6 +1078,243 @@ export function AdminBikeEditorPage() {
                 );
               })}
             </div>
+          );
+        })()}
+      </Card>
+
+      {/* 360° Spin Frames Section */}
+      <Card className="p-6 space-y-5">
+        {(() => {
+          const activeSpinColorId = spinColorId || colors[0]?.id || '';
+          const spinFrames = images
+            .filter(
+              (img) =>
+                img.image_type === 'spin' &&
+                (activeSpinColorId ? img.color_id === activeSpinColorId : !img.color_id)
+            )
+            .sort((a, b) => (a.frame_index ?? a.sort_order) - (b.frame_index ?? b.sort_order));
+
+          const indices = spinFrames.map((f, idx) => f.frame_index ?? idx);
+          const duplicateIndices = indices.filter((val, idx) => indices.indexOf(val) !== idx);
+          const maxIndex = indices.length > 0 ? Math.max(...indices) : -1;
+          const missingIndices: number[] = [];
+          for (let i = 0; i <= maxIndex; i++) {
+            if (!indices.includes(i)) missingIndices.push(i);
+          }
+
+          const reorderSpinFrames = (fromId: string, toId: string) => {
+            if (fromId === toId) return;
+            const orderedIds = spinFrames.map((f) => f.id);
+            const fromIdx = orderedIds.indexOf(fromId);
+            const toIdx = orderedIds.indexOf(toId);
+            if (fromIdx === -1 || toIdx === -1) return;
+            const nextIds = [...orderedIds];
+            const [moved] = nextIds.splice(fromIdx, 1);
+            nextIds.splice(toIdx, 0, moved);
+            const indexById = new Map(nextIds.map((fid, idx) => [fid, idx]));
+            setImages((prev) =>
+              prev.map((img) =>
+                indexById.has(img.id)
+                  ? { ...img, frame_index: indexById.get(img.id)!, sort_order: indexById.get(img.id)! + 1 }
+                  : img
+              )
+            );
+          };
+
+          return (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <h2 className="text-base font-semibold text-[#111214]">360° Spin Frames (Turntable Sequence)</h2>
+                  <p className="text-xs text-[#6B7078]">
+                    Upload 24 or 36 sequential turntable photos per color (recommended 1600×1000 transparent PNG or WebP, ≤ 5 MB per frame). Files are auto-ordered by filename and can be drag-sorted below.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-md border border-[#E3E4E7] bg-[#F5F5F6] px-2.5 py-1 text-xs font-semibold text-[#111214] tabular-nums">
+                    {spinFrames.length} frame{spinFrames.length === 1 ? '' : 's'}
+                  </span>
+                  {canWrite && spinFrames.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setDeleteSpinConfirmOpen(true)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete All Spin Frames
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <Select
+                  label="Select Color for 360° Spin"
+                  value={activeSpinColorId}
+                  onChange={(e) => setSpinColorId(e.target.value)}
+                >
+                  {colors.length === 0 && <option value="">General (No Colors Configured)</option>}
+                  {colors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+
+                {canWrite && (
+                  <FileUploader
+                    label="Bulk Upload Spin Frames (JPG, PNG, WebP)"
+                    multiple
+                    maxFiles={36}
+                    uploading={uploadingSpin}
+                    hint="Up to 36 frames, ≤ 5 MB each · Auto-sorted by filename"
+                    onFilesSelected={async (files) => {
+                      const sortedFiles = [...files].sort((a, b) =>
+                        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+                      );
+                      setUploadingSpin(true);
+                      try {
+                        const uploaded = await Promise.all(
+                          sortedFiles.map((file) => uploadFileToBucket('bike-images', `${slug || 'model'}/spin`, file))
+                        );
+                        setImages((prev) => {
+                          const existingCount = prev.filter(
+                            (img) =>
+                              img.image_type === 'spin' &&
+                              (activeSpinColorId ? img.color_id === activeSpinColorId : !img.color_id)
+                          ).length;
+                          return [
+                            ...prev,
+                            ...uploaded.map((u, idx) => ({
+                              id: crypto.randomUUID(),
+                              color_id: activeSpinColorId || null,
+                              url: u.url,
+                              storage_path: u.path,
+                              alt_text: `${name || 'Bike'} 360 frame ${existingCount + idx + 1}`,
+                              sort_order: existingCount + idx + 1,
+                              is_primary: false,
+                              view_angle: null,
+                              image_type: 'spin' as const,
+                              frame_index: existingCount + idx,
+                            })),
+                          ];
+                        });
+                        toast({ title: `${uploaded.length} spin frame(s) uploaded`, variant: 'success' });
+                      } catch (err) {
+                        toast({
+                          title: 'Spin upload failed',
+                          description: err instanceof Error ? err.message : 'Unable to upload spin frames',
+                          variant: 'error',
+                        });
+                      } finally {
+                        setUploadingSpin(false);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+
+              {(duplicateIndices.length > 0 || missingIndices.length > 0) && (
+                <div className="flex flex-wrap gap-2">
+                  {duplicateIndices.length > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-[#B7791F]/30 bg-[#B7791F]/10 px-2.5 py-1 text-xs font-medium text-[#B7791F]">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Duplicate frame index detected ({Array.from(new Set(duplicateIndices)).join(', ')})
+                    </span>
+                  )}
+                  {missingIndices.length > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-[#B7791F]/30 bg-[#B7791F]/10 px-2.5 py-1 text-xs font-medium text-[#B7791F]">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Missing frame index: {missingIndices.slice(0, 6).join(', ')}{missingIndices.length > 6 ? '...' : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {spinFrames.length >= 2 && (
+                <div className="max-w-lg overflow-hidden rounded-xl border border-[#26282C] bg-[#111214]">
+                  <Bike360Viewer
+                    frames={spinFrames.map((f) => f.url)}
+                    alt={`${name || 'Bike'} 360 preview`}
+                    autoRotate
+                    secondsPerTurn={12}
+                  />
+                </div>
+              )}
+
+              {spinFrames.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-2.5">
+                  {spinFrames.map((frame, idx) => (
+                    <div
+                      key={frame.id}
+                      draggable={canWrite}
+                      onDragStart={() => setDraggedImageId(frame.id)}
+                      onDragOver={(e) => {
+                        if (canWrite) e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggedImageId && draggedImageId !== frame.id) {
+                          reorderSpinFrames(draggedImageId, frame.id);
+                        }
+                        setDraggedImageId(null);
+                      }}
+                      onDragEnd={() => setDraggedImageId(null)}
+                      className="group relative rounded-lg border border-[#E3E4E7] bg-white p-1.5 space-y-1 cursor-grab"
+                    >
+                      <SafeImage src={frame.url} alt={frame.alt_text} className="h-14 w-full rounded bg-[#F5F5F6]" />
+                      <div className="flex items-center justify-between text-[10px] text-[#6B7078] tabular-nums">
+                        <span>#{frame.frame_index ?? idx}</span>
+                        {canWrite && (
+                          <button
+                            type="button"
+                            aria-label={`Remove spin frame ${idx + 1}`}
+                            onClick={() =>
+                              setImages((prev) =>
+                                prev.filter((x) => x.id !== frame.id)
+                              )
+                            }
+                            className="text-[#C0262D] hover:underline cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Modal
+                open={deleteSpinConfirmOpen}
+                onClose={() => setDeleteSpinConfirmOpen(false)}
+                title="Delete All 360° Spin Frames"
+              >
+                <div className="space-y-4">
+                  <p className="text-sm text-[#26282C]">
+                    Remove all <strong>{spinFrames.length}</strong> spin frames for the selected color? Click &ldquo;Save Motorcycle&rdquo; afterwards to persist the change.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={() => setDeleteSpinConfirmOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => {
+                        const idsToRemove = new Set(spinFrames.map((f) => f.id));
+                        setImages((prev) => prev.filter((x) => !idsToRemove.has(x.id)));
+                        setDeleteSpinConfirmOpen(false);
+                        toast({ title: 'Spin frames removed' });
+                      }}
+                    >
+                      Delete All
+                    </Button>
+                  </div>
+                </div>
+              </Modal>
+            </>
           );
         })()}
       </Card>

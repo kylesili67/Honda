@@ -80,6 +80,8 @@ export const SAMPLE_SETTINGS: SiteSettingsMap = {
     'Prices are ex-showroom placeholder estimates and may change without prior notice. Final price is confirmed at the showroom.',
   emi_disclaimer_text:
     'Estimate only. Monthly installments and markup rates are indicative; final terms are determined by the financing bank.',
+  hero_360_enabled: true,
+  hero_360_seconds_per_turn: 14,
 };
 
 export const SAMPLE_BRANCHES: Branch[] = [

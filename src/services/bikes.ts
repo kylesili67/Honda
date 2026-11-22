@@ -290,6 +290,8 @@ export async function saveBikeModel(
     status: BikeModel['status'];
     seo_title: string | null;
     seo_description: string | null;
+    model_3d_url?: string | null;
+    model_3d_poster_url?: string | null;
     variants: Array<Omit<BikeVariant, 'model_id'>>;
     colors: Array<Omit<BikeColor, 'model_id'>>;
     images: Array<Omit<BikeImage, 'model_id'>>;
@@ -324,7 +326,13 @@ export async function saveBikeModel(
         category: cat,
         variants: payload.variants.map((v) => ({ ...v, model_id: prev.id })),
         colors: payload.colors.map((c) => ({ ...c, model_id: prev.id })),
-        images: payload.images.map((i) => ({ ...i, view_angle: i.view_angle ?? null, model_id: prev.id })),
+        images: payload.images.map((i) => ({
+          ...i,
+          view_angle: i.view_angle ?? null,
+          image_type: i.image_type ?? (i.view_angle ? 'angle' : 'gallery'),
+          frame_index: i.frame_index ?? null,
+          model_id: prev.id,
+        })),
         stock: payload.stock,
         updated_at: now,
       };
@@ -345,6 +353,8 @@ export async function saveBikeModel(
         status: payload.status,
         seo_title: payload.seo_title,
         seo_description: payload.seo_description,
+        model_3d_url: payload.model_3d_url ?? null,
+        model_3d_poster_url: payload.model_3d_poster_url ?? null,
         created_at: now,
         updated_at: now,
         category: cat,
@@ -354,6 +364,8 @@ export async function saveBikeModel(
           ...i,
           id: i.id || uid('img'),
           view_angle: i.view_angle ?? null,
+          image_type: i.image_type ?? (i.view_angle ? 'angle' : 'gallery'),
+          frame_index: i.frame_index ?? null,
           model_id: newId,
         })),
         stock: payload.stock,
@@ -377,6 +389,8 @@ export async function saveBikeModel(
     status: payload.status,
     seo_title: payload.seo_title,
     seo_description: payload.seo_description,
+    model_3d_url: payload.model_3d_url ?? null,
+    model_3d_poster_url: payload.model_3d_poster_url ?? null,
   };
 
   let modelId = payload.id;
@@ -409,6 +423,8 @@ export async function saveBikeModel(
     id: ensureUuid(img.id),
     color_id: img.color_id ? (colorIdMap.get(img.color_id) ?? img.color_id) : null,
     view_angle: img.view_angle ?? null,
+    image_type: img.image_type ?? (img.view_angle ? 'angle' : 'gallery'),
+    frame_index: img.frame_index ?? null,
     model_id: modelId!,
   }));
 

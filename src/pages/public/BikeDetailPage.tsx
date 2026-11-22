@@ -12,6 +12,7 @@ import { usePageMeta } from '../../lib/seo';
 import { getBikeBySlug, getTotalAvailableBikeStock, listBikes } from '../../services/bikes';
 import { listMyWishlist, toggleWishlistItem } from '../../services/wishlist';
 import { BikeCard } from '../../components/bikes/BikeCard';
+import { Bike360Viewer, resolveBike360Frames } from '../../components/bikes/Bike360Viewer';
 import { EmiCalculatorWidget } from '../../components/bikes/EmiCalculatorWidget';
 import {
   Accordion,
@@ -47,11 +48,13 @@ export function BikeDetailPage() {
   const [selectedVariantId, setSelectedVariantId] = useState<string>('');
   const [selectedColorId, setSelectedColorId] = useState<string>('');
   const [selectedImageIdx, setSelectedImageIdx] = useState(0);
+  const [galleryTab, setGalleryTab] = useState<'gallery' | '360'>('gallery');
 
   useEffect(() => {
     setSelectedVariantId('');
     setSelectedColorId('');
     setSelectedImageIdx(0);
+    setGalleryTab('gallery');
   }, [slug]);
 
   const activeVariant = useMemo(() => {
@@ -66,10 +69,12 @@ export function BikeDetailPage() {
 
   const colorImages = useMemo(() => {
     if (!bike?.images?.length) return [];
+    const nonSpin = bike.images.filter((i) => i.image_type !== 'spin');
+    const source = nonSpin.length > 0 ? nonSpin : bike.images;
     const matched = activeColor
-      ? bike.images.filter((i) => i.color_id === activeColor.id || !i.color_id)
-      : bike.images;
-    const pool = matched.length > 0 ? matched : bike.images;
+      ? source.filter((i) => i.color_id === activeColor.id || !i.color_id)
+      : source;
+    const pool = matched.length > 0 ? matched : source;
     const order: Record<string, number> = { front: 0, right: 1, back: 2, left: 3 };
     return pool.slice().sort((a, b) => {
       const ra = a.view_angle ? (order[a.view_angle] ?? 4) : 4;
@@ -77,6 +82,11 @@ export function BikeDetailPage() {
       return ra !== rb ? ra - rb : a.sort_order - b.sort_order;
     });
   }, [bike, activeColor]);
+
+  const resolved360 = useMemo(
+    () => resolveBike360Frames(bike, activeColor?.id),
+    [bike, activeColor?.id]
+  );
 
   const currentImg = colorImages[selectedImageIdx] ?? colorImages[0];
 
@@ -282,36 +292,82 @@ export function BikeDetailPage() {
       {/* Main Gallery + Sticky Purchase Card */}
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-8 sm:py-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Gallery */}
+          {/* Gallery & 360° View */}
           <div id="gallery" className="lg:col-span-7 space-y-4">
-            <div className="overflow-hidden rounded-xl border border-[#E3E4E7] bg-[#F5F5F6]">
-              <SafeImage
-                src={currentImg?.url}
-                alt={currentImg?.alt_text || bike.name}
-                aspectClass="aspect-[16/10]"
-                className="w-full aspect-[16/10]"
-              />
-            </div>
-            {colorImages.length > 1 && (
-              <div className="flex gap-3 overflow-x-auto pb-1">
-                {colorImages.map((img, i) => (
-                  <button
-                    key={img.id}
-                    type="button"
-                    onClick={() => setSelectedImageIdx(i)}
-                    className={`relative w-24 shrink-0 overflow-hidden rounded-lg border cursor-pointer ${
-                      i === selectedImageIdx ? 'border-[#D71920] ring-2 ring-[#D71920]/30' : 'border-[#E3E4E7]'
-                    }`}
-                  >
-                    <SafeImage src={img.url} alt={img.alt_text} aspectClass="aspect-[4/3]" className="w-full aspect-[4/3]" />
-                    {img.view_angle && (
-                      <span className="absolute bottom-1 left-1 rounded bg-[#111214]/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
-                        {img.view_angle}
-                      </span>
-                    )}
-                  </button>
-                ))}
+            {resolved360.frames.length > 1 && (
+              <div role="tablist" aria-label="Motorcycle media views" className="inline-flex rounded-lg border border-[#E3E4E7] bg-[#F5F5F6] p-1">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={galleryTab === 'gallery'}
+                  onClick={() => setGalleryTab('gallery')}
+                  className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    galleryTab === 'gallery'
+                      ? 'bg-white text-[#111214] shadow-sm'
+                      : 'text-[#6B7078] hover:text-[#111214]'
+                  }`}
+                >
+                  Gallery
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={galleryTab === '360'}
+                  onClick={() => setGalleryTab('360')}
+                  className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                    galleryTab === '360'
+                      ? 'bg-[#D71920] text-white shadow-sm'
+                      : 'text-[#6B7078] hover:text-[#111214]'
+                  }`}
+                >
+                  360° View
+                </button>
               </div>
+            )}
+
+            {galleryTab === '360' && resolved360.frames.length > 1 ? (
+              <div className="overflow-hidden rounded-xl border border-[#26282C] bg-[#111214]">
+                <Bike360Viewer
+                  frames={resolved360.frames}
+                  frameLabels={resolved360.labels}
+                  alt={bike.name}
+                  autoRotate
+                  secondsPerTurn={settings.hero_360_seconds_per_turn ?? 14}
+                  isActive
+                />
+              </div>
+            ) : (
+              <>
+                <div className="overflow-hidden rounded-xl border border-[#E3E4E7] bg-[#F5F5F6]">
+                  <SafeImage
+                    src={currentImg?.url}
+                    alt={currentImg?.alt_text || bike.name}
+                    aspectClass="aspect-[16/10]"
+                    className="w-full aspect-[16/10]"
+                  />
+                </div>
+                {colorImages.length > 1 && (
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {colorImages.map((img, i) => (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onClick={() => setSelectedImageIdx(i)}
+                        className={`relative w-24 shrink-0 overflow-hidden rounded-lg border cursor-pointer ${
+                          i === selectedImageIdx ? 'border-[#D71920] ring-2 ring-[#D71920]/30' : 'border-[#E3E4E7]'
+                        }`}
+                      >
+                        <SafeImage src={img.url} alt={img.alt_text} aspectClass="aspect-[4/3]" className="w-full aspect-[4/3]" />
+                        {img.view_angle && (
+                          <span className="absolute bottom-1 left-1 rounded bg-[#111214]/75 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+                            {img.view_angle}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

@@ -156,6 +156,8 @@ export interface BikeModel {
   status: PublishStatus;
   seo_title: string | null;
   seo_description: string | null;
+  model_3d_url?: string | null;
+  model_3d_poster_url?: string | null;
   created_at: string;
   updated_at: string;
   category?: BikeCategory;
@@ -202,6 +204,7 @@ export interface BikeColor {
 }
 
 export type BikeViewAngle = 'front' | 'right' | 'back' | 'left';
+export type BikeImageType = 'gallery' | 'angle' | 'spin';
 
 export interface BikeImage {
   id: string;
@@ -213,6 +216,8 @@ export interface BikeImage {
   sort_order: number;
   is_primary: boolean;
   view_angle?: BikeViewAngle | null;
+  image_type?: BikeImageType | null;
+  frame_index?: number | null;
 }
 
 export interface BikePriceHistory {
@@ -676,7 +681,13 @@ export interface SiteSettingsMap {
   business_hours: string;
   price_disclaimer_text: string;
   emi_disclaimer_text: string;
+  hero_mode?: HeroDisplayMode;
+  hero_360_enabled?: boolean;
+  hero_360_seconds_per_turn?: number;
+  hero_effects_enabled?: boolean;
 }
+
+export type HeroDisplayMode = 'auto' | 'procedural' | 'model' | 'frames' | 'image';
 
 export interface NotificationLogEntry {
   id: string;

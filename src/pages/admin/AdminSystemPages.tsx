@@ -20,8 +20,8 @@ import { listAllOrdersAdmin } from '../../services/orders';
 import { listPaymentsAdmin } from '../../services/payments';
 import { listAllServiceAppointmentsAdmin } from '../../services/service';
 import { getAllSettingsAdmin, updateSettingsBatch } from '../../services/settings';
-import type { SiteSettingsMap, UserRole } from '../../types/database';
-import { Button, Card, Input, Textarea } from '../../components/ui/Primitives';
+import type { HeroDisplayMode, SiteSettingsMap, UserRole } from '../../types/database';
+import { Button, Card, Input, Select, Textarea } from '../../components/ui/Primitives';
 
 export function AdminReportsPage() {
   const { data: bookings = [] } = useQuery({ queryKey: ['admin-bookings'], queryFn: listAllBookingsAdmin });
@@ -248,6 +248,69 @@ export function AdminSettingsPage() {
           value={form.token_refund_policy_text}
           onChange={(e) => setForm({ ...form, token_refund_policy_text: e.target.value })}
         />
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="text-base font-semibold text-[#111214]">Homepage Hero 3D &amp; 360° Showcase</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+          <Select
+            label="Hero Display Mode"
+            disabled={!canWrite}
+            value={form.hero_mode ?? 'auto'}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                hero_mode: e.target.value as HeroDisplayMode,
+              })
+            }
+          >
+            <option value="auto">Auto (GLB 3D → Spin Frames → Procedural 3D Motorcycle)</option>
+            <option value="procedural">Procedural 3D Motorcycle (Built-in Three.js)</option>
+            <option value="model">Real 3D Model (.glb) Priority</option>
+            <option value="frames">360° Spin Frames Priority</option>
+            <option value="image">Single Image Pseudo-3D Showroom</option>
+          </Select>
+          <Input
+            label="Auto-Rotate Speed (Seconds per Full Turn)"
+            type="number"
+            min={6}
+            max={30}
+            disabled={!canWrite}
+            value={form.hero_360_seconds_per_turn ?? 14}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                hero_360_seconds_per_turn: Math.max(6, Math.min(30, Number(e.target.value) || 14)),
+              })
+            }
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <label className="inline-flex items-center gap-2.5 text-sm font-medium text-[#111214] cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={!canWrite}
+              checked={form.hero_360_enabled ?? true}
+              onChange={(e) => setForm({ ...form, hero_360_enabled: e.target.checked })}
+              className="h-4 w-4 accent-[#D71920]"
+            />
+            Enable auto-rotate in Hero Showcase
+          </label>
+          <label className="inline-flex items-center gap-2.5 text-sm font-medium text-[#111214] cursor-pointer">
+            <input
+              type="checkbox"
+              disabled={!canWrite}
+              checked={form.hero_effects_enabled ?? true}
+              onChange={(e) => setForm({ ...form, hero_effects_enabled: e.target.checked })}
+              className="h-4 w-4 accent-[#D71920]"
+            />
+            Enable ambient hero effects (particles &amp; speed-lines)
+          </label>
+        </div>
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="text-base font-semibold text-[#111214]">Disclaimers</h2>
         <Textarea
           label="Price Disclaimer Text"
           disabled={!canWrite}
