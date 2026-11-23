@@ -898,40 +898,6 @@ export const DEMO_USERS: DemoUserRecord[] = [
       updated_at: '2026-02-01T10:00:00Z',
     },
   },
-  {
-    id: 'user-admin-1',
-    email: 'admin@demo.pk',
-    password: 'Password123!',
-    roles: ['super_admin'],
-    profile: {
-      id: 'user-admin-1',
-      full_name: 'Zainab Malik (Super Admin)',
-      phone: '+92 300 5550001',
-      email: 'admin@demo.pk',
-      avatar_url: null,
-      loyalty_balance: 0,
-      notes: null,
-      created_at: '2026-01-01T08:00:00Z',
-      updated_at: '2026-01-01T08:00:00Z',
-    },
-  },
-  {
-    id: 'user-sales-1',
-    email: 'sales@demo.pk',
-    password: 'Password123!',
-    roles: ['sales_staff'],
-    profile: {
-      id: 'user-sales-1',
-      full_name: 'Bilal Ahmed (Sales)',
-      phone: '+92 300 5550002',
-      email: 'sales@demo.pk',
-      avatar_url: null,
-      loyalty_balance: 0,
-      notes: null,
-      created_at: '2026-01-01T08:00:00Z',
-      updated_at: '2026-01-01T08:00:00Z',
-    },
-  },
 ];
 
 export interface DemoStoreState {
