@@ -4,22 +4,6 @@ import { useSettings } from '../../context/SettingsContext';
 import { SPLASH_CONFIG } from '../../lib/constants';
 import { Logo } from '../brand/Logo';
 
-function readSplashSeen(): boolean {
-  try {
-    return window.sessionStorage.getItem(SPLASH_CONFIG.STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function markSplashSeen(): void {
-  try {
-    window.sessionStorage.setItem(SPLASH_CONFIG.STORAGE_KEY, '1');
-  } catch {
-    // Ignore storage failures in private browsing or restricted contexts
-  }
-}
-
 function checkReducedMotion(): boolean {
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -45,7 +29,7 @@ export function SplashScreen() {
   const [mounted, setMounted] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     if (window.location.pathname.startsWith('/admin')) return false;
-    return !readSplashSeen();
+    return true;
   });
   const [exiting, setExiting] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -66,7 +50,6 @@ export function SplashScreen() {
   const dismissImmediately = useCallback(() => {
     if (dismissedRef.current) return;
     dismissedRef.current = true;
-    markSplashSeen();
     clearAllTimers();
     setExiting(true);
     const unmountDelay = reducedMotion
@@ -99,7 +82,6 @@ export function SplashScreen() {
   // Timeline orchestration + hard 3.5s safety cap
   useEffect(() => {
     if (!mounted || isAdminRoute) return;
-    markSplashSeen();
 
     if (reducedMotion) {
       const fadeTimer = window.setTimeout(() => {
